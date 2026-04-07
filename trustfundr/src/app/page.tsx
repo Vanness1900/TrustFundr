@@ -14,9 +14,6 @@ export default function Home() {
           </div>
           <p className="text-lg font-semibold text-[#1a4a3a]">TrustFundr</p>
           <h1 className="mt-5 text-3xl font-bold text-gray-900">Welcome Back</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Secure access to your philanthropic dashboard
-          </p>
         </div>
 
         <form className="space-y-5">
@@ -36,17 +33,12 @@ export default function Home() {
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label
-                htmlFor="password"
-                className="block text-xs font-semibold uppercase tracking-wide text-gray-600"
-              >
-                Password
-              </label>
-              <a href="#" className="text-xs font-medium text-gray-500 hover:text-[#1a4a3a]">
-                Forgot?
-              </a>
-            </div>
+            <label
+              htmlFor="password"
+              className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-600"
+            >
+              Password
+            </label>
             <div className="relative">
               <input
                 id="password"
@@ -71,13 +63,6 @@ export default function Home() {
             Sign In →
           </button>
         </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          New to the platform?{" "}
-          <a href="#" className="font-medium text-[#1a4a3a] hover:underline">
-            Apply for an Account
-          </a>
-        </p>
       </section>
     </main>
   );
