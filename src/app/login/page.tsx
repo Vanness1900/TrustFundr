@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace("/dashboard");
+      router.replace("/admin");
     }
   }, [user, isLoading, router]);
 
@@ -32,7 +32,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login({ username: username.trim(), password });
-      router.push("/dashboard");
+      router.push("/admin");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Login failed. Please try again.",
