@@ -3,34 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import {
+  api,
+  type CreateUserAccountRequest,
+  type CreateUserProfileRequest,
+  type UpdateUserAccountRequest,
+  type UpdateUserProfileRequest,
+} from "@/lib/api";
 
 type UserProfileRow = {
   id: string;
-  username: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  role: string;
-  status: "Active" | "Suspended" | "Pending";
-  createdAt: string;
+  name: string;
+  description?: string | null;
 };
 
 type UserAccountRow = {
   id: string;
+  fullName: string;
   username: string;
-  fullName?: string;
-  accountNumber: string;
-  accountType: "Personal" | "Business" | "Charity";
-  bankName: string;
-  currency: string;
-  balance: number;
-  verified: boolean;
-};
-
-type RoleRow = {
-  id: string;
-  role: string;
-  privileges: string[];
+  userProfileId: string;
+  userProfileName: string;
 };
 
 function Pill({
@@ -57,6 +49,8 @@ function Pill({
 function SectionHeader({
   title,
   searchPlaceholder,
+  searchValue,
+  onSearchChange,
   actionLabel,
   onAction,
   filterLabel = "Filter",
@@ -64,6 +58,8 @@ function SectionHeader({
 }: {
   title: string;
   searchPlaceholder: string;
+  searchValue: string;
+  onSearchChange: (v: string) => void;
   actionLabel: string;
   onAction?: () => void;
   filterLabel?: string;
@@ -82,39 +78,45 @@ function SectionHeader({
           <input
             type="search"
             placeholder={searchPlaceholder}
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
             className="w-full min-w-[260px] rounded-full border border-gray-300 bg-white py-2 pl-8 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
           />
         </div>
-        <button
-          type="button"
-          onClick={onFilter}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.8}
-            className="size-4 text-gray-700"
-            aria-hidden="true"
+        {onFilter ? (
+          <button
+            type="button"
+            onClick={onFilter}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3 5h18M6 12h12M10 19h4"
-            />
-          </svg>
-          {filterLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onAction}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-        >
-          <span className="text-base leading-none">+</span>
-          {actionLabel}
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              className="size-4 text-gray-700"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 5h18M6 12h12M10 19h4"
+              />
+            </svg>
+            {filterLabel}
+          </button>
+        ) : null}
+        {onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
+          >
+            <span className="text-base leading-none">+</span>
+            {actionLabel}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -284,15 +286,18 @@ function TextInput({
   placeholder,
   disabled,
   inputMode,
+  type,
 }: {
   value: string;
   onChange?: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  type?: React.InputHTMLAttributes<HTMLInputElement>["type"];
 }) {
   return (
     <input
+      type={type}
       value={value}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       placeholder={placeholder}
@@ -418,276 +423,97 @@ function TrashButton({ onClick, label }: { onClick: () => void; label: string })
 }
 
 export default function AdminPage() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, token, isLoading, logout } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<
-    "User" | "Something" | "Something2" | "Something3" | "Something4"
-  >("User");
-
-  const [userProfiles, setUserProfiles] = useState<UserProfileRow[]>(() => [
-    {
-      id: "U-1001",
-      username: "admin01",
-      fullName: "Admin One",
-      email: "admin01@trustfundr.test",
-      phone: "+60 12-345 6789",
-      role: "Admin",
-      status: "Active",
-      createdAt: "2026-03-02",
-    },
-    {
-      id: "U-1002",
-      username: "jane_doe",
-      fullName: "Jane Doe",
-      email: "jane.doe@trustfundr.test",
-      phone: "+60 11-222 3333",
-      role: "Donor",
-      status: "Pending",
-      createdAt: "2026-03-19",
-    },
-    {
-      id: "U-1003",
-      username: "john_smith",
-      fullName: "John Smith",
-      email: "john.smith@trustfundr.test",
-      phone: "+60 16-777 8888",
-      role: "Creator",
-      status: "Suspended",
-      createdAt: "2026-04-04",
-    },
-  ]);
-
-  const [userAccounts, setUserAccounts] = useState<UserAccountRow[]>(() => [
-    {
-      id: "A-2001",
-      username: "admin01",
-      fullName: "Admin One",
-      accountNumber: "TF-0001029384",
-      accountType: "Business",
-      bankName: "TrustFundr Bank",
-      currency: "MYR",
-      balance: 125000.5,
-      verified: true,
-    },
-    {
-      id: "A-2002",
-      username: "jane_doe",
-      fullName: "Jane Doe",
-      accountNumber: "TF-0005647382",
-      accountType: "Personal",
-      bankName: "Maybank",
-      currency: "MYR",
-      balance: 245.0,
-      verified: false,
-    },
-    {
-      id: "A-2003",
-      username: "john_smith",
-      fullName: "John Smith",
-      accountNumber: "TF-0009182736",
-      accountType: "Charity",
-      bankName: "CIMB",
-      currency: "MYR",
-      balance: 8760.75,
-      verified: true,
-    },
-  ]);
-
-  const [roles, setRoles] = useState<RoleRow[]>(() => [
-    {
-      id: "R-3001",
-      role: "Admin",
-      privileges: [
-        "Manage users",
-        "Manage accounts",
-        "Manage roles & permissions",
-        "View audit logs",
-      ],
-    },
-    {
-      id: "R-3002",
-      role: "Staff",
-      privileges: ["View users", "Approve KYC", "Respond to support tickets"],
-    },
-    {
-      id: "R-3003",
-      role: "Donor",
-      privileges: ["Browse campaigns", "Donate", "View donation history"],
-    },
-    {
-      id: "R-3004",
-      role: "Creator",
-      privileges: ["Create campaigns", "Edit campaigns", "Withdraw funds"],
-    },
-  ]);
+  const [userProfiles, setUserProfiles] = useState<UserProfileRow[]>([]);
+  const [userAccounts, setUserAccounts] = useState<UserAccountRow[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   const [openProfileModal, setOpenProfileModal] = useState(false);
   const [openAccountModal, setOpenAccountModal] = useState(false);
-  const [openRoleModal, setOpenRoleModal] = useState(false);
-  const [openProfileFilterModal, setOpenProfileFilterModal] = useState(false);
-  const [openAccountFilterModal, setOpenAccountFilterModal] = useState(false);
-  const [openRoleFilterModal, setOpenRoleFilterModal] = useState(false);
 
   const [profileMode, setProfileMode] = useState<"create" | "edit">("create");
   const [accountMode, setAccountMode] = useState<"create" | "edit">("create");
-  const [roleMode, setRoleMode] = useState<"create" | "edit" | "view">("create");
-
-  const [profileFilterDraft, setProfileFilterDraft] = useState<{
-    text: string;
-    status: "" | UserProfileRow["status"];
-    createdFrom: string;
-    createdTo: string;
-  }>(() => ({ text: "", status: "", createdFrom: "", createdTo: "" }));
-  const [profileFilterApplied, setProfileFilterApplied] = useState<{
-    text: string;
-    status: "" | UserProfileRow["status"];
-    createdFrom: string;
-    createdTo: string;
-  }>(() => ({ text: "", status: "", createdFrom: "", createdTo: "" }));
-
-  const [accountFilterDraft, setAccountFilterDraft] = useState<{
-    text: string;
-    verified: "" | "Yes" | "No";
-    accountType: "" | UserAccountRow["accountType"];
-    currency: string;
-    balanceMin: number | null;
-    balanceMax: number | null;
-  }>(() => ({ text: "", verified: "", accountType: "", currency: "", balanceMin: null, balanceMax: null }));
-  const [accountFilterApplied, setAccountFilterApplied] = useState<{
-    text: string;
-    verified: "" | "Yes" | "No";
-    accountType: "" | UserAccountRow["accountType"];
-    currency: string;
-    balanceMin: number | null;
-    balanceMax: number | null;
-  }>(() => ({ text: "", verified: "", accountType: "", currency: "", balanceMin: null, balanceMax: null }));
-
-  const [roleFilterDraft, setRoleFilterDraft] = useState<{ text: string }>(() => ({ text: "" }));
-  const [roleFilterApplied, setRoleFilterApplied] = useState<{ text: string }>(() => ({
-    text: "",
-  }));
+  const [profileSearch, setProfileSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
 
   const [profileDraft, setProfileDraft] = useState<UserProfileRow>(() => ({
-    id: newId("U"),
-    username: "",
-    fullName: "",
-    email: "",
-    phone: "",
-    role: "",
-    status: "Pending",
-    createdAt: new Date().toISOString().slice(0, 10),
+    id: "",
+    name: "",
+    description: "",
   }));
 
   const [accountDraft, setAccountDraft] = useState<UserAccountRow>(() => ({
-    id: newId("A"),
-    username: "",
+    id: "",
     fullName: "",
-    accountNumber: "",
-    accountType: "Personal",
-    bankName: "",
-    currency: "MYR",
-    balance: 0,
-    verified: false,
+    username: "",
+    userProfileId: "",
+    userProfileName: "",
   }));
-
-  const [roleDraft, setRoleDraft] = useState<{
-    id: string;
-    role: string;
-    privileges: string[];
-  }>(() => ({
-    id: newId("R"),
-    role: "",
-    privileges: [],
-  }));
-  const [rolePrivilegeInput, setRolePrivilegeInput] = useState("");
+  const [accountPassword, setAccountPassword] = useState("");
 
   const filteredUserProfiles = useMemo(() => {
-    const q = profileFilterApplied.text.trim().toLowerCase();
+    const q = profileSearch.trim().toLowerCase();
     return userProfiles.filter((p) => {
       const matchesText =
         !q ||
-        [p.id, p.username, p.fullName, p.email, p.phone, p.role, p.createdAt]
+        [p.id, p.name, p.description ?? ""]
           .join(" ")
           .toLowerCase()
           .includes(q);
-      const matchesStatus =
-        !profileFilterApplied.status || p.status === profileFilterApplied.status;
-
-      const created = new Date(p.createdAt).getTime();
-      const fromOk = !profileFilterApplied.createdFrom
-        ? true
-        : created >= new Date(profileFilterApplied.createdFrom).getTime();
-      const toOk = !profileFilterApplied.createdTo
-        ? true
-        : created <= new Date(profileFilterApplied.createdTo).getTime();
-
-      return matchesText && matchesStatus && fromOk && toOk;
+      return matchesText;
     });
-  }, [userProfiles, profileFilterApplied]);
-
-  const roleOptions = useMemo(() => {
-    const names = Array.from(new Set(roles.map((r) => r.role).filter(Boolean))).sort();
-    return [{ value: "", label: "Select role" }, ...names.map((n) => ({ value: n, label: n }))];
-  }, [roles]);
-
-  const profileRoleOptions = useMemo(() => {
-    const current = profileDraft.role?.trim();
-    const hasCurrent = !!current && roleOptions.some((o) => o.value === current);
-    return hasCurrent || !current
-      ? roleOptions
-      : [...roleOptions, { value: current, label: `${current} (deleted)` }];
-  }, [profileDraft.role, roleOptions]);
-
-  const accountCurrencyOptions = useMemo(() => {
-    const set = new Set(userAccounts.map((a) => a.currency).filter(Boolean));
-    return Array.from(set).sort();
-  }, [userAccounts]);
-
-  const accountBalanceBounds = useMemo(() => {
-    if (userAccounts.length === 0) return { min: 0, max: 0 };
-    const balances = userAccounts.map((a) => a.balance);
-    return {
-      min: Math.floor(Math.min(...balances)),
-      max: Math.ceil(Math.max(...balances)),
-    };
-  }, [userAccounts]);
+  }, [userProfiles, profileSearch]);
 
   const filteredUserAccounts = useMemo(() => {
-    const q = accountFilterApplied.text.trim().toLowerCase();
+    const q = accountSearch.trim().toLowerCase();
     return userAccounts.filter((a) => {
       const matchesText =
         !q ||
-        [a.id, a.username, a.fullName ?? "", a.accountNumber, a.bankName, a.currency]
+        [
+          a.id,
+          a.username,
+          a.fullName,
+          a.userProfileId,
+          a.userProfileName,
+        ]
           .join(" ")
           .toLowerCase()
           .includes(q);
-      const matchesVerified =
-        !accountFilterApplied.verified ||
-        (accountFilterApplied.verified === "Yes" ? a.verified : !a.verified);
-      const matchesType = !accountFilterApplied.accountType || a.accountType === accountFilterApplied.accountType;
-      const matchesCurrency = !accountFilterApplied.currency || a.currency === accountFilterApplied.currency;
-      const matchesBalanceMin =
-        accountFilterApplied.balanceMin == null ? true : a.balance >= accountFilterApplied.balanceMin;
-      const matchesBalanceMax =
-        accountFilterApplied.balanceMax == null ? true : a.balance <= accountFilterApplied.balanceMax;
-
-      return matchesText && matchesVerified && matchesType && matchesCurrency && matchesBalanceMin && matchesBalanceMax;
+      return matchesText;
     });
-  }, [userAccounts, accountFilterApplied]);
-
-  const filteredRoles = useMemo(() => {
-    const q = roleFilterApplied.text.trim().toLowerCase();
-    return roles.filter((r) => {
-      if (!q) return true;
-      return [r.id, r.role, r.privileges.join(" ")].join(" ").toLowerCase().includes(q);
-    });
-  }, [roles, roleFilterApplied]);
+  }, [userAccounts, accountSearch]);
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (isLoading || !user || !token) return;
+    let cancelled = false;
+    setIsDataLoading(true);
+    setDataError(null);
+    Promise.all([api.listUserProfiles(token), api.listUserAccounts(token)])
+      .then(([profiles, accounts]) => {
+        if (cancelled) return;
+        setUserProfiles(profiles);
+        setUserAccounts(accounts);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setDataError(e instanceof Error ? e.message : "Failed to load admin data.");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsDataLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, token, user]);
 
   const profileColumns = useMemo(
     () => [
@@ -708,29 +534,12 @@ export default function AdminPage() {
           </div>
         ),
       },
-      { key: "username", header: "User Name", render: (r: UserProfileRow) => r.username },
-      { key: "fullName", header: "Full Name", render: (r: UserProfileRow) => r.fullName },
-      { key: "email", header: "Email", render: (r: UserProfileRow) => r.email },
-      { key: "phone", header: "Phone", render: (r: UserProfileRow) => r.phone },
-      { key: "role", header: "Role", render: (r: UserProfileRow) => r.role || "—" },
+      { key: "name", header: "Name", render: (r: UserProfileRow) => r.name },
       {
-        key: "status",
-        header: "Status",
-        render: (r: UserProfileRow) => (
-          <Badge
-            tone={
-              r.status === "Active"
-                ? "success"
-                : r.status === "Pending"
-                  ? "warning"
-                  : "danger"
-            }
-          >
-            {r.status}
-          </Badge>
-        ),
+        key: "description",
+        header: "Description",
+        render: (r: UserProfileRow) => r.description || "—",
       },
-      { key: "createdAt", header: "Created", render: (r: UserProfileRow) => r.createdAt },
     ],
     [],
   );
@@ -747,6 +556,7 @@ export default function AdminPage() {
               onClick={() => {
                 setAccountMode("edit");
                 setAccountDraft(r);
+                setAccountPassword("");
                 setOpenAccountModal(true);
               }}
             />
@@ -754,31 +564,12 @@ export default function AdminPage() {
           </div>
         ),
       },
-      { key: "username", header: "User Name", render: (r: UserAccountRow) => r.username },
+      { key: "username", header: "Username", render: (r: UserAccountRow) => r.username },
+      { key: "fullName", header: "Full Name", render: (r: UserAccountRow) => r.fullName },
       {
-        key: "accountNumber",
-        header: "Account Number",
-        render: (r: UserAccountRow) => (
-          <span className="font-mono text-xs text-gray-800">{r.accountNumber}</span>
-        ),
-      },
-      { key: "accountType", header: "Type", render: (r: UserAccountRow) => r.accountType },
-      { key: "bankName", header: "Bank", render: (r: UserAccountRow) => r.bankName },
-      { key: "currency", header: "Currency", render: (r: UserAccountRow) => r.currency },
-      {
-        key: "balance",
-        header: "Balance",
-        render: (r: UserAccountRow) =>
-          new Intl.NumberFormat(undefined, {
-            style: "currency",
-            currency: r.currency,
-          }).format(r.balance),
-      },
-      {
-        key: "verified",
-        header: "Verified",
-        render: (r: UserAccountRow) =>
-          r.verified ? <Badge tone="success">Yes</Badge> : <Badge tone="warning">No</Badge>,
+        key: "userProfileName",
+        header: "User Profile",
+        render: (r: UserAccountRow) => r.userProfileName,
       },
     ],
     [],
@@ -800,14 +591,9 @@ export default function AdminPage() {
   function openAddUserProfile() {
     setProfileMode("create");
     setProfileDraft({
-      id: newId("U"),
-      username: "",
-      fullName: "",
-      email: "",
-      phone: "",
-      role: roleOptions.find((o) => o.value)?.value ?? "",
-      status: "Pending",
-      createdAt: new Date().toISOString().slice(0, 10),
+      id: "",
+      name: "",
+      description: "",
     });
     setOpenProfileModal(true);
   }
@@ -815,28 +601,14 @@ export default function AdminPage() {
   function openAddUserAccount() {
     setAccountMode("create");
     setAccountDraft({
-      id: newId("A"),
-      username: "",
+      id: "",
       fullName: "",
-      accountNumber: "",
-      accountType: "Personal",
-      bankName: "",
-      currency: "MYR",
-      balance: 0,
-      verified: false,
+      username: "",
+      userProfileId: "",
+      userProfileName: "",
     });
+    setAccountPassword("");
     setOpenAccountModal(true);
-  }
-
-  function openAddRole() {
-    setRoleMode("create");
-    setRoleDraft({
-      id: newId("R"),
-      role: "",
-      privileges: [],
-    });
-    setRolePrivilegeInput("");
-    setOpenRoleModal(true);
   }
 
   return (
@@ -866,22 +638,9 @@ export default function AdminPage() {
           Currently Managing
         </h1>
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" onClick={() => setActiveTab("User")}>
-            <Pill active={activeTab === "User"}>User</Pill>
-          </button>
-          <button type="button" onClick={() => setActiveTab("Something")}>
-            <Pill active={activeTab === "Something"}>Something</Pill>
-          </button>
-          <button type="button" onClick={() => setActiveTab("Something2")}>
-            <Pill active={activeTab === "Something2"}>Something</Pill>
-          </button>
-          <button type="button" onClick={() => setActiveTab("Something3")}>
-            <Pill active={activeTab === "Something3"}>Something</Pill>
-          </button>
-          <button type="button" onClick={() => setActiveTab("Something4")}>
-            <Pill active={activeTab === "Something4"}>Something</Pill>
-          </button>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Pill active>User Profiles</Pill>
+          <Pill active>User Accounts</Pill>
 
           <div className="ml-auto">
             <button
@@ -893,6 +652,12 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {dataError ? (
+          <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {dataError}
+          </div>
+        ) : null}
+
         <h2 className="mt-10 text-5xl font-extrabold tracking-tight text-[#2f7a55]">
           Dashboard
         </h2>
@@ -900,13 +665,11 @@ export default function AdminPage() {
         <section className="mt-10">
           <SectionHeader
             title="User Profile"
-            searchPlaceholder="Start searching"
+            searchPlaceholder="Search by ID, name, description..."
+            searchValue={profileSearch}
+            onSearchChange={setProfileSearch}
             actionLabel="Add User Profile"
             onAction={openAddUserProfile}
-            onFilter={() => {
-              setProfileFilterDraft(profileFilterApplied);
-              setOpenProfileFilterModal(true);
-            }}
           />
           <TableShell>
             <DataTable columns={profileColumns} rows={filteredUserProfiles} />
@@ -916,190 +679,76 @@ export default function AdminPage() {
         <section className="mt-12">
           <SectionHeader
             title="User Account"
-            searchPlaceholder="Start searching"
+            searchPlaceholder="Search by ID, username, full name, profile..."
+            searchValue={accountSearch}
+            onSearchChange={setAccountSearch}
             actionLabel="Add User Account"
             onAction={openAddUserAccount}
-            onFilter={() => {
-              setAccountFilterDraft(accountFilterApplied);
-              setOpenAccountFilterModal(true);
-            }}
           />
           <TableShell>
             <DataTable columns={accountColumns} rows={filteredUserAccounts} />
           </TableShell>
-        </section>
-
-        <section className="mt-12 pb-16">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Roles</h2>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                  </svg>
-                </span>
-                <input
-                  type="search"
-                  placeholder="Start searching"
-                  className="w-full min-w-[260px] rounded-full border border-gray-300 bg-white py-2 pl-8 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setRoleFilterDraft(roleFilterApplied);
-                  setOpenRoleFilterModal(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.8}
-                  className="size-4 text-gray-700"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 5h18M6 12h12M10 19h4"
-                  />
-                </svg>
-                Filter
-              </button>
-              <button
-                type="button"
-                onClick={openAddRole}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-              >
-                <span className="text-base leading-none">+</span>
-                Add Role
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 overflow-hidden rounded-md border border-gray-200 bg-gray-100">
-            <ul className="max-h-[300px] divide-y divide-gray-200 overflow-auto bg-white">
-              {filteredRoles.map((r) => (
-                <li key={r.id} className="px-4 py-4 sm:px-5">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">
-                        {r.role}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {r.privileges.map((p) => (
-                          <Badge key={p}>{p}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoleMode("edit");
-                          setRoleDraft({
-                            id: r.id,
-                            role: r.role,
-                            privileges: r.privileges,
-                          });
-                          setRolePrivilegeInput("");
-                          setOpenRoleModal(true);
-                        }}
-                        className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
         </section>
       </div>
 
       <ModalShell
         open={openProfileModal}
         title={profileMode === "edit" ? "Edit User Profile" : "Add User Profile"}
-        description="Fill in the user’s details. The ID is auto-generated and cannot be changed."
+        description="User profiles map to backend table user_profiles."
         onClose={() => setOpenProfileModal(false)}
       >
         <form
           className="space-y-5"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (profileMode === "edit") {
-              setUserProfiles((prev) => prev.map((p) => (p.id === profileDraft.id ? profileDraft : p)));
-            } else {
-              setUserProfiles((prev) => [profileDraft, ...prev]);
+            if (!token) return;
+            const body: CreateUserProfileRequest | UpdateUserProfileRequest = {
+              name: profileDraft.name.trim(),
+              description: profileDraft.description ?? "",
+            };
+            if (!body.name) {
+              setDataError("Profile name is required.");
+              return;
             }
-            setOpenProfileModal(false);
+            setIsDataLoading(true);
+            setDataError(null);
+            try {
+              const saved =
+                profileMode === "edit"
+                  ? await api.updateUserProfile(token, profileDraft.id, body)
+                  : await api.createUserProfile(token, body);
+              setUserProfiles((prev) => {
+                const exists = prev.some((p) => p.id === saved.id);
+                return exists
+                  ? prev.map((p) => (p.id === saved.id ? saved : p))
+                  : [saved, ...prev];
+              });
+              setOpenProfileModal(false);
+            } catch (err: unknown) {
+              setDataError(err instanceof Error ? err.message : "Failed to save user profile.");
+            } finally {
+              setIsDataLoading(false);
+            }
           }}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="User ID">
-              <TextInput value={profileDraft.id} disabled />
+            <Field label="Profile ID">
+              <TextInput value={profileDraft.id || "Auto-generated"} disabled />
             </Field>
-            <Field label="User Name">
+            <Field label="Name">
               <TextInput
-                value={profileDraft.username}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, username: v }))}
-                placeholder="e.g. jane_doe"
+                value={profileDraft.name}
+                onChange={(v) => setProfileDraft((p) => ({ ...p, name: v }))}
+                placeholder="e.g. Admin"
               />
             </Field>
-            <Field label="Full Name">
+            <Field label="Description">
               <TextInput
-                value={profileDraft.fullName}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, fullName: v }))}
-                placeholder="e.g. Jane Doe"
-              />
-            </Field>
-            <Field label="Email">
-              <TextInput
-                value={profileDraft.email}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, email: v }))}
-                placeholder="e.g. jane@example.com"
-              />
-            </Field>
-            <Field label="Phone">
-              <TextInput
-                value={profileDraft.phone}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, phone: v }))}
-                placeholder="e.g. +60 11-222 3333"
-              />
-            </Field>
-            <Field label="Role">
-              <SelectInput
-                value={profileDraft.role}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, role: v }))}
-                options={profileRoleOptions}
-              />
-            </Field>
-            <Field label="Status">
-              <SelectInput
-                value={profileDraft.status}
+                value={profileDraft.description ?? ""}
                 onChange={(v) =>
-                  setProfileDraft((p) => ({
-                    ...p,
-                    status: v as UserProfileRow["status"],
-                  }))
+                  setProfileDraft((p) => ({ ...p, description: v }))
                 }
-                options={[
-                  { value: "Active", label: "Active" },
-                  { value: "Pending", label: "Pending" },
-                  { value: "Suspended", label: "Suspended" },
-                ]}
-              />
-            </Field>
-            <Field label="Created Date">
-              <TextInput
-                value={profileDraft.createdAt}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, createdAt: v }))}
-                placeholder="YYYY-MM-DD"
+                placeholder="Optional"
               />
             </Field>
           </div>
@@ -1108,10 +757,26 @@ export default function AdminPage() {
             <div className="flex items-center justify-end gap-3">
               {profileMode === "edit" ? (
                 <TrashButton
-                  label="Delete account"
-                  onClick={() => {
-                    setUserProfiles((prev) => prev.filter((p) => p.id !== profileDraft.id));
-                    setOpenProfileModal(false);
+                  label="Suspend profile"
+                  onClick={async () => {
+                    if (!token) return;
+                    setIsDataLoading(true);
+                    setDataError(null);
+                    try {
+                      await api.suspendUserProfile(token, profileDraft.id);
+                      setUserProfiles((prev) =>
+                        prev.filter((p) => p.id !== profileDraft.id),
+                      );
+                      setOpenProfileModal(false);
+                    } catch (err: unknown) {
+                      setDataError(
+                        err instanceof Error
+                          ? err.message
+                          : "Failed to suspend user profile.",
+                      );
+                    } finally {
+                      setIsDataLoading(false);
+                    }
                   }}
                 />
               ) : null}
@@ -1136,26 +801,85 @@ export default function AdminPage() {
       <ModalShell
         open={openAccountModal}
         title={accountMode === "edit" ? "Edit User Account" : "Add User Account"}
-        description="Enter account details. The ID is auto-generated and cannot be changed."
+        description="User accounts map to backend table user_accounts."
         onClose={() => setOpenAccountModal(false)}
       >
         <form
           className="space-y-5"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (accountMode === "edit") {
-              setUserAccounts((prev) => prev.map((a) => (a.id === accountDraft.id ? accountDraft : a)));
-            } else {
-              setUserAccounts((prev) => [accountDraft, ...prev]);
+            if (!token) return;
+            const selectedProfile = userProfiles.find(
+              (p) => p.id === accountDraft.userProfileId,
+            );
+            if (!accountDraft.fullName.trim()) {
+              setDataError("Full name is required.");
+              return;
             }
-            setOpenAccountModal(false);
+            if (!accountDraft.username.trim()) {
+              setDataError("Username is required.");
+              return;
+            }
+            if (!accountDraft.userProfileId) {
+              setDataError("User profile is required.");
+              return;
+            }
+            if (accountMode === "create" && !accountPassword.trim()) {
+              setDataError("Password is required for new accounts.");
+              return;
+            }
+
+            setIsDataLoading(true);
+            setDataError(null);
+            try {
+              const saved =
+                accountMode === "edit"
+                  ? await api.updateUserAccount(token, accountDraft.id, {
+                      fullName: accountDraft.fullName.trim(),
+                      username: accountDraft.username.trim(),
+                      userProfileId: accountDraft.userProfileId,
+                      ...(accountPassword.trim()
+                        ? { password: accountPassword }
+                        : {}),
+                    } satisfies UpdateUserAccountRequest)
+                  : await api.createUserAccount(token, {
+                      fullName: accountDraft.fullName.trim(),
+                      username: accountDraft.username.trim(),
+                      userProfileId: accountDraft.userProfileId,
+                      password: accountPassword,
+                    } satisfies CreateUserAccountRequest);
+
+              // Ensure display name matches selected profile (backend also returns name)
+              const merged: UserAccountRow = {
+                ...saved,
+                userProfileName:
+                  saved.userProfileName ||
+                  selectedProfile?.name ||
+                  accountDraft.userProfileName,
+              };
+
+              setUserAccounts((prev) => {
+                const exists = prev.some((a) => a.id === merged.id);
+                return exists
+                  ? prev.map((a) => (a.id === merged.id ? merged : a))
+                  : [merged, ...prev];
+              });
+              setAccountPassword("");
+              setOpenAccountModal(false);
+            } catch (err: unknown) {
+              setDataError(
+                err instanceof Error ? err.message : "Failed to save user account.",
+              );
+            } finally {
+              setIsDataLoading(false);
+            }
           }}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Account ID">
-              <TextInput value={accountDraft.id} disabled />
+              <TextInput value={accountDraft.id || "Auto-generated"} disabled />
             </Field>
-            <Field label="User Name">
+            <Field label="Username">
               <TextInput
                 value={accountDraft.username}
                 onChange={(v) => setAccountDraft((a) => ({ ...a, username: v }))}
@@ -1164,79 +888,65 @@ export default function AdminPage() {
             </Field>
             <Field label="Full Name">
               <TextInput
-                value={accountDraft.fullName ?? ""}
+                value={accountDraft.fullName}
                 onChange={(v) => setAccountDraft((a) => ({ ...a, fullName: v }))}
                 placeholder="e.g. Jane Doe"
               />
             </Field>
-            <Field label="Account Number">
-              <TextInput
-                value={accountDraft.accountNumber}
-                onChange={(v) => setAccountDraft((a) => ({ ...a, accountNumber: v }))}
-                placeholder="e.g. TF-0001234567"
-              />
-            </Field>
-            <Field label="Account Type">
+            <Field label="User Profile">
               <SelectInput
-                value={accountDraft.accountType}
-                onChange={(v) =>
+                value={accountDraft.userProfileId}
+                onChange={(v) => {
+                  const p = userProfiles.find((x) => x.id === v);
                   setAccountDraft((a) => ({
                     ...a,
-                    accountType: v as UserAccountRow["accountType"],
-                  }))
-                }
+                    userProfileId: v,
+                    userProfileName: p?.name || a.userProfileName,
+                  }));
+                }}
                 options={[
-                  { value: "Personal", label: "Personal" },
-                  { value: "Business", label: "Business" },
-                  { value: "Charity", label: "Charity" },
+                  { value: "", label: "Select profile" },
+                  ...userProfiles
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((p) => ({ value: p.id, label: p.name })),
                 ]}
               />
             </Field>
-            <Field label="Bank Name">
+            <Field label={accountMode === "edit" ? "Password (optional)" : "Password"}>
               <TextInput
-                value={accountDraft.bankName}
-                onChange={(v) => setAccountDraft((a) => ({ ...a, bankName: v }))}
-                placeholder="e.g. Maybank"
+                type="password"
+                value={accountPassword}
+                onChange={setAccountPassword}
+                placeholder={accountMode === "edit" ? "Leave blank to keep unchanged" : "Enter a password"}
               />
             </Field>
-            <Field label="Currency">
-              <TextInput
-                value={accountDraft.currency}
-                onChange={(v) => setAccountDraft((a) => ({ ...a, currency: v.toUpperCase() }))}
-                placeholder="e.g. MYR"
-              />
-            </Field>
-            <Field label="Balance">
-              <TextInput
-                value={String(accountDraft.balance)}
-                onChange={(v) =>
-                  setAccountDraft((a) => ({
-                    ...a,
-                    balance: Number.isFinite(Number(v)) ? Number(v) : a.balance,
-                  }))
-                }
-                inputMode="decimal"
-                placeholder="e.g. 0"
-              />
-            </Field>
-          </div>
-
-          <div className="pt-1">
-            <CheckboxInput
-              checked={accountDraft.verified}
-              onChange={(v) => setAccountDraft((a) => ({ ...a, verified: v }))}
-              label="Verified"
-            />
           </div>
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <div className="flex items-center justify-end gap-3">
               {accountMode === "edit" ? (
                 <TrashButton
-                  label="Delete account"
-                  onClick={() => {
-                    setUserAccounts((prev) => prev.filter((a) => a.id !== accountDraft.id));
-                    setOpenAccountModal(false);
+                  label="Suspend account"
+                  onClick={async () => {
+                    if (!token) return;
+                    setIsDataLoading(true);
+                    setDataError(null);
+                    try {
+                      await api.suspendUserAccount(token, accountDraft.id);
+                      setUserAccounts((prev) =>
+                        prev.filter((a) => a.id !== accountDraft.id),
+                      );
+                      setOpenAccountModal(false);
+                    } catch (err: unknown) {
+                      setDataError(
+                        err instanceof Error
+                          ? err.message
+                          : "Failed to suspend user account.",
+                      );
+                    } finally {
+                      setIsDataLoading(false);
+                    }
                   }}
                 />
               ) : null}
@@ -1254,421 +964,6 @@ export default function AdminPage() {
                 Save
               </button>
             </div>
-          </div>
-        </form>
-      </ModalShell>
-
-      <ModalShell
-        open={openRoleModal}
-        title={roleMode === "edit" ? "Edit Role" : "Add Role"}
-        description="Define the role and its privileges. The ID is auto-generated and cannot be changed."
-        onClose={() => setOpenRoleModal(false)}
-      >
-        <form
-          className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const privileges = roleDraft.privileges;
-            if (roleMode === "edit") {
-              setRoles((prev) =>
-                prev.map((r) =>
-                  r.id === roleDraft.id ? { id: roleDraft.id, role: roleDraft.role, privileges } : r,
-                ),
-              );
-            } else if (roleMode === "create") {
-              setRoles((prev) => [{ id: roleDraft.id, role: roleDraft.role, privileges }, ...prev]);
-            }
-            setOpenRoleModal(false);
-          }}
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Role ID">
-              <TextInput value={roleDraft.id} disabled />
-            </Field>
-            <Field label="Role Name">
-              <TextInput
-                value={roleDraft.role}
-                onChange={(v) => setRoleDraft((r) => ({ ...r, role: v }))}
-                placeholder="e.g. Auditor"
-              />
-            </Field>
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-sm font-medium text-gray-800">Privileges</div>
-            <div className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="max-h-40 space-y-2 overflow-auto pr-1">
-                {Array.from(
-                  new Set(roles.flatMap((r) => r.privileges).concat(roleDraft.privileges)),
-                )
-                  .filter(Boolean)
-                  .sort()
-                  .map((p) => {
-                    const checked = roleDraft.privileges.includes(p);
-                    return (
-                      <label key={p} className="flex items-center gap-2 text-sm text-gray-800">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? Array.from(new Set([...roleDraft.privileges, p]))
-                              : roleDraft.privileges.filter((x) => x !== p);
-                            setRoleDraft((r) => ({ ...r, privileges: next }));
-                          }}
-                          className="h-4 w-4 rounded border-gray-300 text-[#2f7a55] focus:ring-[#2f7a55]"
-                        />
-                        <span>{p}</span>
-                      </label>
-                    );
-                  })}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <TextInput
-                value={rolePrivilegeInput}
-                onChange={setRolePrivilegeInput}
-                placeholder="Add a new privilege (optional)"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const v = rolePrivilegeInput.trim();
-                  if (!v) return;
-                  setRoleDraft((r) => ({
-                    ...r,
-                    privileges: Array.from(new Set([...r.privileges, v])),
-                  }));
-                  setRolePrivilegeInput("");
-                }}
-                className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            {roleMode === "edit" ? (
-              <TrashButton
-                label="Delete account"
-                onClick={() => {
-                  setRoles((prev) => prev.filter((r) => r.id !== roleDraft.id));
-                  setOpenRoleModal(false);
-                }}
-              />
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setOpenRoleModal(false)}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Back
-            </button>
-            <button
-              type="submit"
-              className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-            >
-              Save
-            </button>
-          </div>
-        </form>
-      </ModalShell>
-
-      <ModalShell
-        open={openProfileFilterModal}
-        title="Filter User Profiles"
-        description="Filter what’s shown in the User Profile table."
-        onClose={() => setOpenProfileFilterModal(false)}
-      >
-        <form
-          className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setProfileFilterApplied(profileFilterDraft);
-            setOpenProfileFilterModal(false);
-          }}
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Search text">
-              <TextInput
-                value={profileFilterDraft.text}
-                onChange={(v) => setProfileFilterDraft((f) => ({ ...f, text: v }))}
-                placeholder="ID, username, name, email..."
-              />
-            </Field>
-            <Field label="Status">
-              <SelectInput
-                value={profileFilterDraft.status}
-                onChange={(v) =>
-                  setProfileFilterDraft((f) => ({
-                    ...f,
-                    status: (v as "" | UserProfileRow["status"]) ?? "",
-                  }))
-                }
-                options={[
-                  { value: "", label: "Any" },
-                  { value: "Active", label: "Active" },
-                  { value: "Pending", label: "Pending" },
-                  { value: "Suspended", label: "Suspended" },
-                ]}
-              />
-            </Field>
-            <Field label="Created From (YYYY-MM-DD)">
-              <TextInput
-                value={profileFilterDraft.createdFrom}
-                onChange={(v) => setProfileFilterDraft((f) => ({ ...f, createdFrom: v }))}
-                placeholder="e.g. 2026-01-01"
-              />
-            </Field>
-            <Field label="Created To (YYYY-MM-DD)">
-              <TextInput
-                value={profileFilterDraft.createdTo}
-                onChange={(v) => setProfileFilterDraft((f) => ({ ...f, createdTo: v }))}
-                placeholder="e.g. 2026-12-31"
-              />
-            </Field>
-          </div>
-
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setOpenProfileFilterModal(false)}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setProfileFilterDraft({ text: "", status: "", createdFrom: "", createdTo: "" });
-                setProfileFilterApplied({ text: "", status: "", createdFrom: "", createdTo: "" });
-                setOpenProfileFilterModal(false);
-              }}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Clear
-            </button>
-            <button
-              type="submit"
-              className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-            >
-              Apply
-            </button>
-          </div>
-        </form>
-      </ModalShell>
-
-      <ModalShell
-        open={openAccountFilterModal}
-        title="Filter User Accounts"
-        description="Filter what’s shown in the User Account table."
-        onClose={() => setOpenAccountFilterModal(false)}
-      >
-        <form
-          className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setAccountFilterApplied(accountFilterDraft);
-            setOpenAccountFilterModal(false);
-          }}
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Search text">
-              <TextInput
-                value={accountFilterDraft.text}
-                onChange={(v) => setAccountFilterDraft((f) => ({ ...f, text: v }))}
-                placeholder="ID, username, account #, bank..."
-              />
-            </Field>
-            <Field label="Account Type">
-              <SelectInput
-                value={accountFilterDraft.accountType}
-                onChange={(v) =>
-                  setAccountFilterDraft((f) => ({
-                    ...f,
-                    accountType: v as "" | UserAccountRow["accountType"],
-                  }))
-                }
-                options={[
-                  { value: "", label: "Any" },
-                  { value: "Personal", label: "Personal" },
-                  { value: "Business", label: "Business" },
-                  { value: "Charity", label: "Charity" },
-                ]}
-              />
-            </Field>
-            <Field label="Currency">
-              <SelectInput
-                value={accountFilterDraft.currency}
-                onChange={(v) =>
-                  setAccountFilterDraft((f) => ({
-                    ...f,
-                    currency: v,
-                  }))
-                }
-                options={[
-                  { value: "", label: "Any" },
-                  ...accountCurrencyOptions.map((c) => ({ value: c, label: c })),
-                ]}
-              />
-            </Field>
-            <Field label="Verified">
-              <SelectInput
-                value={accountFilterDraft.verified}
-                onChange={(v) =>
-                  setAccountFilterDraft((f) => ({
-                    ...f,
-                    verified: v as "" | "Yes" | "No",
-                  }))
-                }
-                options={[
-                  { value: "", label: "Any" },
-                  { value: "Yes", label: "Yes" },
-                  { value: "No", label: "No" },
-                ]}
-              />
-            </Field>
-          </div>
-
-          <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-            <div className="flex items-center justify-between text-sm font-medium text-gray-800">
-              <span>Balance range</span>
-              <span className="text-xs font-normal text-gray-600">
-                {accountFilterDraft.balanceMin ?? accountBalanceBounds.min} –{" "}
-                {accountFilterDraft.balanceMax ?? accountBalanceBounds.max}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-gray-600">Min</span>
-                <input
-                  type="range"
-                  min={accountBalanceBounds.min}
-                  max={accountBalanceBounds.max}
-                  value={accountFilterDraft.balanceMin ?? accountBalanceBounds.min}
-                  onChange={(e) =>
-                    setAccountFilterDraft((f) => ({
-                      ...f,
-                      balanceMin: Number(e.target.value),
-                    }))
-                  }
-                  className="w-full accent-[#2f7a55]"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-gray-600">Max</span>
-                <input
-                  type="range"
-                  min={accountBalanceBounds.min}
-                  max={accountBalanceBounds.max}
-                  value={accountFilterDraft.balanceMax ?? accountBalanceBounds.max}
-                  onChange={(e) =>
-                    setAccountFilterDraft((f) => ({
-                      ...f,
-                      balanceMax: Number(e.target.value),
-                    }))
-                  }
-                  className="w-full accent-[#2f7a55]"
-                />
-              </label>
-            </div>
-            <div className="text-xs text-gray-600">
-              Tip: If Min &gt; Max, the filter will simply match none until you adjust.
-            </div>
-          </div>
-
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setOpenAccountFilterModal(false)}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAccountFilterDraft({
-                  text: "",
-                  verified: "",
-                  accountType: "",
-                  currency: "",
-                  balanceMin: null,
-                  balanceMax: null,
-                });
-                setAccountFilterApplied({
-                  text: "",
-                  verified: "",
-                  accountType: "",
-                  currency: "",
-                  balanceMin: null,
-                  balanceMax: null,
-                });
-                setOpenAccountFilterModal(false);
-              }}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Clear
-            </button>
-            <button
-              type="submit"
-              className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-            >
-              Apply
-            </button>
-          </div>
-        </form>
-      </ModalShell>
-
-      <ModalShell
-        open={openRoleFilterModal}
-        title="Filter Roles"
-        description="Filter what’s shown in the Roles panel."
-        onClose={() => setOpenRoleFilterModal(false)}
-      >
-        <form
-          className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setRoleFilterApplied(roleFilterDraft);
-            setOpenRoleFilterModal(false);
-          }}
-        >
-          <Field label="Search text">
-            <TextInput
-              value={roleFilterDraft.text}
-              onChange={(v) => setRoleFilterDraft((f) => ({ ...f, text: v }))}
-              placeholder="Role name, privilege..."
-            />
-          </Field>
-
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setOpenRoleFilterModal(false)}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRoleFilterDraft({ text: "" });
-                setRoleFilterApplied({ text: "" });
-                setOpenRoleFilterModal(false);
-              }}
-              className="rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-            >
-              Clear
-            </button>
-            <button
-              type="submit"
-              className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
-            >
-              Apply
-            </button>
           </div>
         </form>
       </ModalShell>
