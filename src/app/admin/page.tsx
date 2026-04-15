@@ -10,6 +10,7 @@ type UserProfileRow = {
   fullName: string;
   email: string;
   phone: string;
+  role: string;
   status: "Active" | "Suspended" | "Pending";
   createdAt: string;
 };
@@ -430,6 +431,7 @@ export default function AdminPage() {
       fullName: "Admin One",
       email: "admin01@trustfundr.test",
       phone: "+60 12-345 6789",
+      role: "Admin",
       status: "Active",
       createdAt: "2026-03-02",
     },
@@ -439,6 +441,7 @@ export default function AdminPage() {
       fullName: "Jane Doe",
       email: "jane.doe@trustfundr.test",
       phone: "+60 11-222 3333",
+      role: "Donor",
       status: "Pending",
       createdAt: "2026-03-19",
     },
@@ -448,6 +451,7 @@ export default function AdminPage() {
       fullName: "John Smith",
       email: "john.smith@trustfundr.test",
       phone: "+60 16-777 8888",
+      role: "Creator",
       status: "Suspended",
       createdAt: "2026-04-04",
     },
@@ -569,6 +573,7 @@ export default function AdminPage() {
     fullName: "",
     email: "",
     phone: "",
+    role: "",
     status: "Pending",
     createdAt: new Date().toISOString().slice(0, 10),
   }));
@@ -601,7 +606,7 @@ export default function AdminPage() {
     return userProfiles.filter((p) => {
       const matchesText =
         !q ||
-        [p.id, p.username, p.fullName, p.email, p.phone, p.createdAt]
+        [p.id, p.username, p.fullName, p.email, p.phone, p.role, p.createdAt]
           .join(" ")
           .toLowerCase()
           .includes(q);
@@ -619,6 +624,19 @@ export default function AdminPage() {
       return matchesText && matchesStatus && fromOk && toOk;
     });
   }, [userProfiles, profileFilterApplied]);
+
+  const roleOptions = useMemo(() => {
+    const names = Array.from(new Set(roles.map((r) => r.role).filter(Boolean))).sort();
+    return [{ value: "", label: "Select role" }, ...names.map((n) => ({ value: n, label: n }))];
+  }, [roles]);
+
+  const profileRoleOptions = useMemo(() => {
+    const current = profileDraft.role?.trim();
+    const hasCurrent = !!current && roleOptions.some((o) => o.value === current);
+    return hasCurrent || !current
+      ? roleOptions
+      : [...roleOptions, { value: current, label: `${current} (deleted)` }];
+  }, [profileDraft.role, roleOptions]);
 
   const accountCurrencyOptions = useMemo(() => {
     const set = new Set(userAccounts.map((a) => a.currency).filter(Boolean));
@@ -694,6 +712,7 @@ export default function AdminPage() {
       { key: "fullName", header: "Full Name", render: (r: UserProfileRow) => r.fullName },
       { key: "email", header: "Email", render: (r: UserProfileRow) => r.email },
       { key: "phone", header: "Phone", render: (r: UserProfileRow) => r.phone },
+      { key: "role", header: "Role", render: (r: UserProfileRow) => r.role || "—" },
       {
         key: "status",
         header: "Status",
@@ -786,6 +805,7 @@ export default function AdminPage() {
       fullName: "",
       email: "",
       phone: "",
+      role: roleOptions.find((o) => o.value)?.value ?? "",
       status: "Pending",
       createdAt: new Date().toISOString().slice(0, 10),
     });
@@ -1050,6 +1070,13 @@ export default function AdminPage() {
                 value={profileDraft.phone}
                 onChange={(v) => setProfileDraft((p) => ({ ...p, phone: v }))}
                 placeholder="e.g. +60 11-222 3333"
+              />
+            </Field>
+            <Field label="Role">
+              <SelectInput
+                value={profileDraft.role}
+                onChange={(v) => setProfileDraft((p) => ({ ...p, role: v }))}
+                options={profileRoleOptions}
               />
             </Field>
             <Field label="Status">
