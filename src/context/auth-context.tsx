@@ -8,7 +8,56 @@ import {
   useMemo,
   useState,
 } from "react";
-import { api, type LoginRequest, type LoginResponse } from "@/lib/api";
+
+type ApiError = { message: string };
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+interface LoginResponse {
+  id: string;
+  fullName: string;
+  username: string;
+  token: string;
+}
+
+const DEFAULT_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8080";
+
+function getHeaders(token?: string | null): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function parseOrThrow<T>(
+  res: Response,
+  fallbackMessage: string,
+): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+  const error: ApiError = await res.json().catch(() => ({
+    message: fallbackMessage,
+  }));
+  throw new Error(error.message || fallbackMessage);
+}
+
+async function apiLogin(credentials: LoginRequest): Promise<LoginResponse> {
+  const res = await fetch(`${DEFAULT_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(credentials),
+  });
+  return parseOrThrow<LoginResponse>(res, "Login failed. Please try again.");
+}
+
+async function apiLogout(token?: string | null): Promise<void> {
+  await fetch(`${DEFAULT_BASE_URL}/api/auth/logout`, {
+    method: "POST",
+    headers: getHeaders(token),
+  });
+}
 
 interface User {
   id: string;
@@ -51,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (credentials: LoginRequest) => {
-    const response: LoginResponse = await api.login(credentials);
+    const response: LoginResponse = await apiLogin(credentials);
 
     const userData: User = {
       id: response.id,
@@ -68,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.logout(token);
+      await apiLogout(token);
     } catch {
       // Server-side logout is best-effort for stateless JWT
     }

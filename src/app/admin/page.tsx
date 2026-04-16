@@ -3,13 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import {
-  api,
-  type CreateUserAccountRequest,
-  type CreateUserProfileRequest,
-  type UpdateUserAccountRequest,
-  type UpdateUserProfileRequest,
-} from "@/lib/api";
 
 type UserProfileRow = {
   id: string;
@@ -24,6 +17,149 @@ type UserAccountRow = {
   userProfileId: string;
   userProfileName: string;
 };
+
+type ApiError = { message: string };
+
+type CreateUserProfileRequest = {
+  name: string;
+  description?: string | null;
+};
+
+type UpdateUserProfileRequest = CreateUserProfileRequest;
+
+type CreateUserAccountRequest = {
+  userProfileId: string;
+  fullName: string;
+  username: string;
+  password: string;
+};
+
+type UpdateUserAccountRequest = {
+  fullName: string;
+  username: string;
+  password?: string;
+  userProfileId?: string;
+};
+
+const DEFAULT_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8080";
+
+function getHeaders(token?: string | null): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function parseOrThrow<T>(
+  res: Response,
+  fallbackMessage: string,
+): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+  const error: ApiError = await res.json().catch(() => ({
+    message: fallbackMessage,
+  }));
+  throw new Error(error.message || fallbackMessage);
+}
+
+async function listUserProfiles(token?: string | null) {
+  const res = await fetch(`${DEFAULT_BASE_URL}/api/admin/user-profiles`, {
+    method: "GET",
+    headers: getHeaders(token),
+  });
+  return parseOrThrow<UserProfileRow[]>(res, "Failed to load user profiles.");
+}
+
+async function listUserAccounts(token?: string | null) {
+  const res = await fetch(`${DEFAULT_BASE_URL}/api/admin/user-accounts`, {
+    method: "GET",
+    headers: getHeaders(token),
+  });
+  return parseOrThrow<UserAccountRow[]>(res, "Failed to load user accounts.");
+}
+
+async function createUserProfile(
+  token: string | null | undefined,
+  body: CreateUserProfileRequest,
+) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-profiles/create-user-profile`,
+    {
+      method: "POST",
+      headers: getHeaders(token),
+      body: JSON.stringify(body),
+    },
+  );
+  return parseOrThrow<UserProfileRow>(res, "Failed to create user profile.");
+}
+
+async function updateUserProfile(
+  token: string | null | undefined,
+  id: string,
+  body: UpdateUserProfileRequest,
+) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-profiles/update-user-profile/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: getHeaders(token),
+      body: JSON.stringify(body),
+    },
+  );
+  return parseOrThrow<UserProfileRow>(res, "Failed to update user profile.");
+}
+
+async function suspendUserProfile(token: string | null | undefined, id: string) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-profiles/suspend-user-profile/${encodeURIComponent(id)}`,
+    {
+      method: "POST",
+      headers: getHeaders(token),
+    },
+  );
+  return parseOrThrow<UserProfileRow>(res, "Failed to suspend user profile.");
+}
+
+async function createUserAccount(
+  token: string | null | undefined,
+  body: CreateUserAccountRequest,
+) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-accounts/create-user-account`,
+    {
+      method: "POST",
+      headers: getHeaders(token),
+      body: JSON.stringify(body),
+    },
+  );
+  return parseOrThrow<UserAccountRow>(res, "Failed to create user account.");
+}
+
+async function updateUserAccount(
+  token: string | null | undefined,
+  id: string,
+  body: UpdateUserAccountRequest,
+) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-accounts/update-user-account/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: getHeaders(token),
+      body: JSON.stringify(body),
+    },
+  );
+  return parseOrThrow<UserAccountRow>(res, "Failed to update user account.");
+}
+
+async function suspendUserAccount(token: string | null | undefined, id: string) {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/admin/user-accounts/suspend-user-account/${encodeURIComponent(id)}`,
+    {
+      method: "POST",
+      headers: getHeaders(token),
+    },
+  );
+  return parseOrThrow<UserAccountRow>(res, "Failed to suspend user account.");
+}
 
 function Pill({
   children,
@@ -496,7 +632,7 @@ export default function AdminPage() {
     let cancelled = false;
     setIsDataLoading(true);
     setDataError(null);
-    Promise.all([api.listUserProfiles(token), api.listUserAccounts(token)])
+    Promise.all([listUserProfiles(token), listUserAccounts(token)])
       .then(([profiles, accounts]) => {
         if (cancelled) return;
         setUserProfiles(profiles);
@@ -715,8 +851,8 @@ export default function AdminPage() {
             try {
               const saved =
                 profileMode === "edit"
-                  ? await api.updateUserProfile(token, profileDraft.id, body)
-                  : await api.createUserProfile(token, body);
+                  ? await updateUserProfile(token, profileDraft.id, body)
+                  : await createUserProfile(token, body);
               setUserProfiles((prev) => {
                 const exists = prev.some((p) => p.id === saved.id);
                 return exists
@@ -763,7 +899,7 @@ export default function AdminPage() {
                     setIsDataLoading(true);
                     setDataError(null);
                     try {
-                      await api.suspendUserProfile(token, profileDraft.id);
+                      await suspendUserProfile(token, profileDraft.id);
                       setUserProfiles((prev) =>
                         prev.filter((p) => p.id !== profileDraft.id),
                       );
@@ -834,7 +970,7 @@ export default function AdminPage() {
             try {
               const saved =
                 accountMode === "edit"
-                  ? await api.updateUserAccount(token, accountDraft.id, {
+                  ? await updateUserAccount(token, accountDraft.id, {
                       fullName: accountDraft.fullName.trim(),
                       username: accountDraft.username.trim(),
                       userProfileId: accountDraft.userProfileId,
@@ -842,7 +978,7 @@ export default function AdminPage() {
                         ? { password: accountPassword }
                         : {}),
                     } satisfies UpdateUserAccountRequest)
-                  : await api.createUserAccount(token, {
+                  : await createUserAccount(token, {
                       fullName: accountDraft.fullName.trim(),
                       username: accountDraft.username.trim(),
                       userProfileId: accountDraft.userProfileId,
@@ -933,7 +1069,7 @@ export default function AdminPage() {
                     setIsDataLoading(true);
                     setDataError(null);
                     try {
-                      await api.suspendUserAccount(token, accountDraft.id);
+                      await suspendUserAccount(token, accountDraft.id);
                       setUserAccounts((prev) =>
                         prev.filter((a) => a.id !== accountDraft.id),
                       );
