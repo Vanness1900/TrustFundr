@@ -4,6 +4,31 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
+/**
+ * Map role string dari backend ke path tujuan setelah login.
+ * Sesuai dengan UserProfile.name di database:
+ *   - "Admin"               → /admin
+ *   - "Donee"               → /donee
+ *   - "Fund Raiser"         → /fundraiser (pakai SPASI, sesuai backend)
+ *   - "Platform Management" → /platform
+ *
+ * Kalau role tidak dikenal (data corrupt?), tendang balik ke /login.
+ */
+function redirectPathByRole(role: string): string {
+  switch (role) {
+    case "Admin":
+      return "/admin";
+    case "Donee":
+      return "/donee";
+    case "Fund Raiser":
+      return "/fundraiser";
+    case "Platform Management":
+      return "/platform";
+    default:
+      return "/login";
+  }
+}
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
@@ -14,9 +39,11 @@ export default function LoginPage() {
   const { login, user, isLoading } = useAuth();
   const router = useRouter();
 
+  // Redirect kalau user sudah login (misal buka /login lagi padahal udah login)
+  // Tujuan redirect tergantung role-nya
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace("/admin");
+      router.replace(redirectPathByRole(user.role));
     }
   }, [user, isLoading, router]);
 
@@ -31,8 +58,13 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await login({ username: username.trim(), password });
-      router.push("/admin");
+      // login() sekarang return User data (termasuk role)
+      const loggedInUser = await login({
+        username: username.trim(),
+        password,
+      });
+      // Redirect berdasarkan role user
+      router.push(redirectPathByRole(loggedInUser.role));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Login failed. Please try again.",
@@ -127,4 +159,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

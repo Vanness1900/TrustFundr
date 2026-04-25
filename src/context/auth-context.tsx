@@ -20,6 +20,7 @@ interface LoginResponse {
   id: string;
   fullName: string;
   username: string;
+  role: string;
   token: string;
 }
 
@@ -63,13 +64,14 @@ interface User {
   id: string;
   fullName: string;
   username: string;
+  role: string;
 }
 
 interface AuthContextValue {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (credentials: LoginRequest) => Promise<void>;
+  login: (credentials: LoginRequest) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -86,11 +88,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
-
     if (storedToken && storedUser) {
       try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser) as User;
+
+        // Migrasi: kalau user lama di localStorage tidak punya role,
+        // anggap session-nya invalid dan paksa login ulang.
+        if (!parsedUser.role) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+        } else {
+          setToken(storedToken);
+          setUser(parsedUser);
+        }
       } catch {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
@@ -101,18 +111,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (credentials: LoginRequest) => {
     const response: LoginResponse = await apiLogin(credentials);
-
     const userData: User = {
       id: response.id,
       fullName: response.fullName,
       username: response.username,
+      role: response.role,
     };
-
     localStorage.setItem(TOKEN_KEY, response.token);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
-
     setToken(response.token);
     setUser(userData);
+    return userData;
   }, []);
 
   const logout = useCallback(async () => {
@@ -121,7 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Server-side logout is best-effort for stateless JWT
     }
-
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setToken(null);
