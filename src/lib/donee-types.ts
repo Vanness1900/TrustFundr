@@ -24,8 +24,15 @@ export interface FundraisingActivity {
     viewCount: number;
     favouriteCount: number;
     ownerName: string;
-    ownerUsername: string;
-    createdAt: string; // ISO 8601 string dari Instant di backend
+    ownerUsername?: string;
+    createdAt: string;
+    // Fields added in Track B (optional until backend exposes them):
+    goalAmount?: number;
+    currentAmount?: number;
+    status?: string;
+    imageUrl?: string | null;
+    category?: string;
+    location?: string;
   }
   
   /**
