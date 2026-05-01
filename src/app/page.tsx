@@ -9,9 +9,22 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading) {
-      router.replace(user ? "/admin" : "/login");
+    if (isLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
     }
+    const path =
+      user.role === "Admin"
+        ? "/admin"
+        : user.role === "Donee"
+          ? "/donee"
+          : user.role === "Fund Raiser"
+            ? "/fundraiser"
+            : user.role === "Platform Management"
+              ? "/platform"
+              : "/login";
+    router.replace(path);
   }, [user, isLoading, router]);
 
   return (

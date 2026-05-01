@@ -58,8 +58,8 @@ export default function DoneeLayout({
     );
   }
 
-  // Ambil inisial nama user untuk avatar (huruf depan dari fullName)
-  const initial = user.fullName.charAt(0).toUpperCase();
+  // At this point the role guard guarantees Donee.
+  const avatarLetter = "D";
 
   async function handleLogout() {
     await logout();
@@ -88,7 +88,7 @@ export default function DoneeLayout({
               aria-label={`${user.fullName} avatar`}
               title={user.fullName}
             >
-              {initial}
+              {avatarLetter}
             </div>
           </div>
         </div>

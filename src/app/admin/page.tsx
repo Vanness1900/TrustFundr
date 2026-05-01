@@ -164,12 +164,16 @@ async function suspendUserAccount(token: string | null | undefined, id: string) 
 function Pill({
   children,
   active,
+  onClick,
 }: {
   children: React.ReactNode;
   active?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <span
+    <button
+      type="button"
+      onClick={onClick}
       className={[
         "inline-flex rounded-full border px-4 py-1.5 text-sm font-medium transition",
         active
@@ -178,7 +182,7 @@ function Pill({
       ].join(" ")}
     >
       {children}
-    </span>
+    </button>
   );
 }
 
@@ -561,6 +565,9 @@ function TrashButton({ onClick, label }: { onClick: () => void; label: string })
 export default function AdminPage() {
   const { user, token, isLoading, logout } = useAuth();
   const router = useRouter();
+  const [activeSection, setActiveSection] = useState<"profiles" | "accounts">(
+    "profiles",
+  );
   const [userProfiles, setUserProfiles] = useState<UserProfileRow[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccountRow[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
@@ -719,6 +726,17 @@ export default function AdminPage() {
     );
   }
 
+  const avatarLetter =
+    user.role === "Admin"
+      ? "A"
+      : user.role === "Donee"
+        ? "D"
+        : user.role === "Fund Raiser"
+          ? "F"
+          : user.role === "Platform Management"
+            ? "P"
+            : "U";
+
   async function handleLogout() {
     await logout();
     router.push("/login");
@@ -762,7 +780,7 @@ export default function AdminPage() {
               aria-label="Admin avatar"
               title={user.fullName}
             >
-              T
+              {avatarLetter}
             </div>
           </div>
         </div>
@@ -775,8 +793,12 @@ export default function AdminPage() {
         </h1>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Pill active>User Profiles</Pill>
-          <Pill active>User Accounts</Pill>
+          <Pill active={activeSection === "profiles"} onClick={() => setActiveSection("profiles")}>
+            User Profiles
+          </Pill>
+          <Pill active={activeSection === "accounts"} onClick={() => setActiveSection("accounts")}>
+            User Accounts
+          </Pill>
 
           <div className="ml-auto">
             <button
@@ -798,33 +820,35 @@ export default function AdminPage() {
           Dashboard
         </h2>
 
-        <section className="mt-10">
-          <SectionHeader
-            title="User Profile"
-            searchPlaceholder="Search by ID, name, description..."
-            searchValue={profileSearch}
-            onSearchChange={setProfileSearch}
-            actionLabel="Add User Profile"
-            onAction={openAddUserProfile}
-          />
-          <TableShell>
-            <DataTable columns={profileColumns} rows={filteredUserProfiles} />
-          </TableShell>
-        </section>
-
-        <section className="mt-12">
-          <SectionHeader
-            title="User Account"
-            searchPlaceholder="Search by ID, username, full name, profile..."
-            searchValue={accountSearch}
-            onSearchChange={setAccountSearch}
-            actionLabel="Add User Account"
-            onAction={openAddUserAccount}
-          />
-          <TableShell>
-            <DataTable columns={accountColumns} rows={filteredUserAccounts} />
-          </TableShell>
-        </section>
+        {activeSection === "profiles" ? (
+          <section className="mt-10">
+            <SectionHeader
+              title="User Profile"
+              searchPlaceholder="Search by ID, name, description..."
+              searchValue={profileSearch}
+              onSearchChange={setProfileSearch}
+              actionLabel="Add User Profile"
+              onAction={openAddUserProfile}
+            />
+            <TableShell>
+              <DataTable columns={profileColumns} rows={filteredUserProfiles} />
+            </TableShell>
+          </section>
+        ) : (
+          <section className="mt-10">
+            <SectionHeader
+              title="User Account"
+              searchPlaceholder="Search by ID, username, full name, profile..."
+              searchValue={accountSearch}
+              onSearchChange={setAccountSearch}
+              actionLabel="Add User Account"
+              onAction={openAddUserAccount}
+            />
+            <TableShell>
+              <DataTable columns={accountColumns} rows={filteredUserAccounts} />
+            </TableShell>
+          </section>
+        )}
       </div>
 
       <ModalShell
