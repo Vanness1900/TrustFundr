@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 
+import { getAppRoleFromJwt } from "@/lib/jwt-role";
+
 type ApiError = { message: string };
 
 export interface LoginRequest {
@@ -16,11 +18,11 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Matches TrustFundr-be LoginController.LoginResponse (no role in JSON). */
 interface LoginResponse {
   id: string;
   fullName: string;
   username: string;
-  role: string;
   token: string;
 }
 
@@ -67,6 +69,13 @@ interface User {
   role: string;
 }
 
+/** Persisted snapshot; role is always derived from the JWT when hydrating. */
+interface StoredUserSnapshot {
+  id: string;
+  fullName: string;
+  username: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   token: string | null;
@@ -80,6 +89,25 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const TOKEN_KEY = "trustfundr_token";
 const USER_KEY = "trustfundr_user";
 
+function parseStoredUserSnapshot(raw: string): StoredUserSnapshot | null {
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const id = o.id;
+    const fullName = o.fullName;
+    const username = o.username;
+    if (
+      typeof id === "string" &&
+      typeof fullName === "string" &&
+      typeof username === "string"
+    ) {
+      return { id, fullName, username };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -88,37 +116,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
-    if (storedToken && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser) as User;
-
-        // Migrasi: kalau user lama di localStorage tidak punya role,
-        // anggap session-nya invalid dan paksa login ulang.
-        if (!parsedUser.role) {
+    queueMicrotask(() => {
+      if (storedToken && storedUser) {
+        const snapshot = parseStoredUserSnapshot(storedUser);
+        const role = getAppRoleFromJwt(storedToken);
+        if (snapshot && role) {
+          setToken(storedToken);
+          setUser({ ...snapshot, role });
+        } else {
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(USER_KEY);
-        } else {
-          setToken(storedToken);
-          setUser(parsedUser);
         }
-      } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    });
   }, []);
 
   const login = useCallback(async (credentials: LoginRequest) => {
     const response: LoginResponse = await apiLogin(credentials);
+    const role = getAppRoleFromJwt(response.token);
+    if (!role) {
+      throw new Error(
+        "Signed in but the session token did not contain a recognized role.",
+      );
+    }
     const userData: User = {
       id: response.id,
       fullName: response.fullName,
       username: response.username,
-      role: response.role,
+      role,
+    };
+    const snapshot: StoredUserSnapshot = {
+      id: userData.id,
+      fullName: userData.fullName,
+      username: userData.username,
     };
     localStorage.setItem(TOKEN_KEY, response.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    localStorage.setItem(USER_KEY, JSON.stringify(snapshot));
     setToken(response.token);
     setUser(userData);
     return userData;
