@@ -36,16 +36,29 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { login, user, isLoading } = useAuth();
+  const { login, user, isLoading, logout } = useAuth();
   const router = useRouter();
 
-  // Redirect kalau user sudah login (misal buka /login lagi padahal udah login)
-  // Tujuan redirect tergantung role-nya
+  const loggedInRedirectPath =
+    user && !isLoading ? redirectPathByRole(user.role) : null;
+  const showRedirectSpinner =
+    isLoading ||
+    Boolean(
+      user && loggedInRedirectPath && loggedInRedirectPath !== "/login",
+    );
+
+  // Redirect kalau user sudah login (misal buka /login lagi padahal udah login).
   useEffect(() => {
-    if (!isLoading && user) {
-      router.replace(redirectPathByRole(user.role));
+    if (!isLoading && user && loggedInRedirectPath && loggedInRedirectPath !== "/login") {
+      router.replace(loggedInRedirectPath);
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, loggedInRedirectPath, router]);
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+    if (!loggedInRedirectPath || loggedInRedirectPath !== "/login") return;
+    void logout();
+  }, [isLoading, user, loggedInRedirectPath, logout]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -74,7 +87,7 @@ export default function LoginPage() {
     }
   }
 
-  if (isLoading || user) {
+  if (showRedirectSpinner) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-100">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1a4a3a] border-t-transparent" />
