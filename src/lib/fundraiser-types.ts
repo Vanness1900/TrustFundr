@@ -1,4 +1,9 @@
-// src/lib/fundraiser-types.ts
+export type FundraisingStatus =
+  | "Draft"
+  | "Published"
+  | "Suspended"
+  | "Completed"
+  | string;
 
 export interface FundraisingActivity {
   id: string;
@@ -6,36 +11,31 @@ export interface FundraisingActivity {
   description: string;
   goalAmount: number;
   currentAmount: number;
-  status: string;
-  viewCount: number;
-  favouriteCount: number;
-  createdAt: string;
-  imageUrl: string | null;
   category: string;
   location: string;
+  status: FundraisingStatus;
+  imageUrl?: string;
+  viewCount: number;
+  favouriteCount: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FundraisingActivityCreateRequest {
   title: string;
   description: string;
-  goalAmount: number;
-  category: string;
-  location: string;
+  goalAmount?: number;
+  category?: string;
+  location?: string;
+  imageUrl?: string;
 }
 
-export interface DonationRecord {
-  id: string;
-  donorName: string;
-  amount: number;
-  donatedAt: string;
-  fundraisingActivityId: string;
+export interface FundraisingActivityUpdateRequest {
+  title?: string;
+  description?: string;
+  goalAmount?: number;
+  category?: string;
+  location?: string;
+  imageUrl?: string;
+  status?: string;
 }
-
-export interface FundraiserStats {
-  totalViews: number;
-  totalFavourites: number;
-  totalDonations: number;
-  totalAmountRaised: number;
-}
-
-export type ApiError = { message: string };

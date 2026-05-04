@@ -53,7 +53,7 @@ export default function FundraiserLayout({
     <main className="min-h-screen bg-white">
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-extrabold tracking-tight text-[#16a34a]">
+          <span className="text-lg font-extrabold tracking-tight text-[#18543E]">
             TrustFundr
           </span>
           <div className="flex items-center gap-3">
@@ -64,7 +64,7 @@ export default function FundraiserLayout({
               Sign Out
             </button>
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#16a34a] text-sm font-extrabold text-white"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#18543E] text-sm font-extrabold text-white"
               aria-label={`${user.fullName} avatar`}
               title={user.fullName}
             >
