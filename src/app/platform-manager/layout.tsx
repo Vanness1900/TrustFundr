@@ -1,11 +1,11 @@
-// src/app/fundraiser/layout.tsx
+// src/app/platform-manager/layout.tsx
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
-export default function FundraiserLayout({
+export default function PlatformManagerLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -21,20 +21,20 @@ export default function FundraiserLayout({
       return;
     }
 
-    if (user.role !== "Fund Raiser") {
+    if (user.role !== "Platform Management") {
       const redirectPath =
         user.role === "Admin"
           ? "/admin"
-          : user.role === "Donee"
-            ? "/donee"
-            : user.role === "Platform Management"
-              ? "/platform-manager"
+          : user.role === "Fund Raiser"
+            ? "/fundraiser"
+            : user.role === "Donee"
+              ? "/donee"
               : "/login";
       router.replace(redirectPath);
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || !user || user.role !== "Fund Raiser") {
+  if (isLoading || !user || user.role !== "Platform Management") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#16a34a] border-t-transparent" />

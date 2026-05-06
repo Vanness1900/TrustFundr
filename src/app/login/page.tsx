@@ -23,7 +23,7 @@ function redirectPathByRole(role: string): string {
     case "Fund Raiser":
       return "/fundraiser";
     case "Platform Management":
-      return "/platform";
+      return "/platform-manager";
     default:
       return "/login";
   }

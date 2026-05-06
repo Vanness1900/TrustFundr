@@ -43,7 +43,7 @@ export default function DoneeLayout({
           : user.role === "Fund Raiser"
             ? "/fundraiser"
             : user.role === "Platform Management"
-              ? "/platform"
+              ? "/platform-manager"
               : "/login"; // role tidak dikenali → tendang ke login
       router.replace(redirectPath);
     }
