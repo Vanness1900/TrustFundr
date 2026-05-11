@@ -83,6 +83,16 @@ function mapPagedActivities(raw: unknown): PagedFundraisingActivities {
   };
 }
 
+/** Backend wraps each row as { id, createdAt, fundraisingActivity: { ... } }. */
+function mapFavouriteApiRow(raw: unknown): FundraisingActivity {
+  const r = raw as Record<string, unknown>;
+  const nested = r.fundraisingActivity;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return mapActivityRow(nested);
+  }
+  return mapActivityRow(raw);
+}
+
 export async function listFundraisingActivities(
   token: string | null,
   page = 0,
@@ -168,10 +178,12 @@ export async function listMyFavourites(
       headers: getHeaders(token),
     },
   );
-  return parseOrThrow<FavouriteActivity[]>(
+  const json = await parseOrThrow<unknown>(
     res,
     "Failed to load favourites.",
   );
+  if (!Array.isArray(json)) return [];
+  return json.map((item) => mapFavouriteApiRow(item) as FavouriteActivity);
 }
 
 export async function searchMyFavourites(
@@ -187,10 +199,12 @@ export async function searchMyFavourites(
     method: "GET",
     headers: getHeaders(token),
   });
-  return parseOrThrow<FavouriteActivity[]>(
+  const json = await parseOrThrow<unknown>(
     res,
     "Failed to search favourites.",
   );
+  if (!Array.isArray(json)) return [];
+  return json.map((item) => mapFavouriteApiRow(item) as FavouriteActivity);
 }
 
 export async function saveFavourite(

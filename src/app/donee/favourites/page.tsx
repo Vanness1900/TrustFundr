@@ -102,7 +102,7 @@ export default function FavouritesPage() {
         </div>
 
         <div className="mt-6">
-          <div className="relative max-w-xl">
+          <div className="relative w-full min-w-0">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#94a3b8]">
               <SearchIcon />
             </span>

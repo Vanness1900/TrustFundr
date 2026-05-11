@@ -168,7 +168,7 @@ export default function CategoriesPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
-      <p className="text-sm text-gray-500">Welcome, Platform Manager!</p>
+      <p className="text-sm text-gray-600">Welcome, Platform Manager!</p>
       <h1 className="mt-0.5 text-2xl font-bold text-gray-900">
         Currently Managing
       </h1>
@@ -186,17 +186,36 @@ export default function CategoriesPage() {
         </button>
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => {
-            setCategoryPage(0);
-            setSearch(e.target.value);
-          }}
-          placeholder="Start searching Categories"
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
-        />
+      <div className="mt-6 flex min-w-0 flex-1 items-center gap-3">
+        <div className="relative min-w-0 flex-1">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="size-4"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+              />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              setCategoryPage(0);
+              setSearch(e.target.value);
+            }}
+            placeholder="Search categories"
+            className="w-full rounded-full border border-gray-300 bg-white py-2.5 pl-9 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-500 focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
+          />
+        </div>
         <button
           type="button"
           onClick={openCreate}
@@ -324,7 +343,7 @@ export default function CategoriesPage() {
                   setModalName(e.target.value);
                   setNameError("");
                 }}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
                 placeholder="e.g. Healthcare"
                 autoFocus
               />
@@ -335,7 +354,7 @@ export default function CategoriesPage() {
                 value={modalDescription}
                 onChange={(e) => setModalDescription(e.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
                 placeholder="Short summary"
               />
               {nameError ? (

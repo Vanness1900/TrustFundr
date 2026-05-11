@@ -73,7 +73,8 @@ export default function PlatformManagerLayout({
           </div>
         </div>
       </header>
-      {children}
+      {/* Force readable text on white chrome: body uses light --foreground in dark OS mode */}
+      <div className="text-gray-900">{children}</div>
     </main>
   );
 }

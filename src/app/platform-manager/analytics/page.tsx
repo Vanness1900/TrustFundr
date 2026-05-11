@@ -27,6 +27,9 @@ function addUtcDays(ymd: string, deltaDays: number): string {
   return utcYmd(new Date(t));
 }
 
+/** Inclusive UTC calendar days in the weekly report; backend window is [start, end] inclusive. */
+const WEEKLY_INCLUSIVE_DAY_SPAN = 6;
+
 function utcMonthString(d: Date): string {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -75,21 +78,14 @@ export default function AnalyticsPage() {
   const [monthYear, setMonthYear] = useState(() => utcMonthString(new Date()));
 
   const [report, setReport] = useState<PlatformReportDto | null>(null);
-  const [rangeError, setRangeError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   const loadReport = useCallback(async () => {
     if (!token) return;
     setRangeError(null);
     setFetchError(null);
-
-    if (periodKind === "Weekly") {
-      if (weeklyStart > weeklyEnd) {
-        setRangeError("Week range: start date must be on or before end date.");
-        return;
-      }
-    }
 
     setLoading(true);
     try {
@@ -211,7 +207,11 @@ export default function AnalyticsPage() {
                   <input
                     type="date"
                     value={weeklyStart}
-                    onChange={(e) => setWeeklyStart(e.target.value)}
+                    onChange={(e) => {
+                      const start = e.target.value;
+                      setWeeklyStart(start);
+                      setWeeklyEnd(addUtcDays(start, WEEKLY_INCLUSIVE_DAY_SPAN));
+                    }}
                     className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
                   />
                 </label>
@@ -220,7 +220,11 @@ export default function AnalyticsPage() {
                   <input
                     type="date"
                     value={weeklyEnd}
-                    onChange={(e) => setWeeklyEnd(e.target.value)}
+                    onChange={(e) => {
+                      const end = e.target.value;
+                      setWeeklyEnd(end);
+                      setWeeklyStart(addUtcDays(end, -WEEKLY_INCLUSIVE_DAY_SPAN));
+                    }}
                     className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#2F7A55] focus:outline-none focus:ring-1 focus:ring-[#2F7A55]"
                   />
                 </label>
