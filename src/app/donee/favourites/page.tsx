@@ -4,173 +4,214 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { listMyFavourites } from "@/lib/donee-api";
-import { DUMMY_FAVOURITES } from "@/lib/donee-dummy";
+import { listMyFavourites, searchMyFavourites } from "@/lib/donee-api";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "@/lib/use-debounce";
 import { DoneeNav } from "@/app/donee/page";
 import type { FundraisingActivity } from "@/lib/donee-types";
+import { DoneeCampaignCard } from "@/components/donee-campaign-card";
+
+const FAV_PAGE_SIZE = 9;
 
 export default function FavouritesPage() {
-  const { token } = useAuth();
+  const { token, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const [favourites, setFavourites] = useState<FundraisingActivity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(
+    searchQuery,
+    SEARCH_DEBOUNCE_MS,
+  );
+  const [favPage, setFavPage] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [isAuthLoading, token, router]);
 
   useEffect(() => {
     if (!token) return;
 
     let cancelled = false;
-    setIsLoading(true);
 
-    listMyFavourites(token)
-      .then((data) => {
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setIsLoading(true);
+
+      const q = debouncedSearch.trim();
+      try {
+        const data =
+          q.length > 0
+            ? await searchMyFavourites(token, q)
+            : await listMyFavourites(token);
         if (cancelled) return;
-        setFavourites(data.length === 0 ? DUMMY_FAVOURITES : data);
-      })
-      .catch(() => {
-        if (!cancelled) setFavourites(DUMMY_FAVOURITES);
-      })
-      .finally(() => {
+        setFavourites(data);
+        setFavPage(0);
+      } catch {
+        if (!cancelled) setFavourites([]);
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, debouncedSearch]);
 
-  const filtered = favourites.filter((a) => {
-    const q = searchQuery.toLowerCase();
+  if (isAuthLoading || !token) {
     return (
-      a.title.toLowerCase().includes(q) ||
-      (a.ownerName?.toLowerCase() ?? "").includes(q)
+      <main className="flex min-h-screen items-center justify-center bg-[#F3F3F3]">
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+      </main>
     );
-  });
+  }
 
-  return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <DoneeNav pathname={pathname} />
-
-      <h1 className="mt-6 text-lg font-bold text-gray-900">Favourites</h1>
-
-      {/* Search bar */}
-      <div className="mt-4 relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-          <SearchIcon />
-        </span>
-        <input
-          type="search"
-          placeholder="Search favourites"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-full border border-gray-300 bg-white py-2.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
-        />
-      </div>
-
-      {/* Loading */}
-      {isLoading ? (
-        <div className="mt-12 flex justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2f7a55] border-t-transparent" />
-        </div>
-      ) : null}
-
-      {/* Empty state */}
-      {!isLoading && filtered.length === 0 ? (
-        <div className="mt-12 text-center text-sm text-gray-500">
-          {searchQuery ? `No results for "${searchQuery}".` : "No favourites yet."}
-        </div>
-      ) : null}
-
-      {/* Horizontal list */}
-      {!isLoading && filtered.length > 0 ? (
-        <div className="mt-6 space-y-3">
-          {filtered.map((activity) => (
-            <FavouriteListCard
-              key={activity.id}
-              activity={activity}
-              onClick={() => router.push(`/donee/campaigns/${activity.id}`)}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
+  const favTotalPages = Math.max(
+    1,
+    Math.ceil(favourites.length / FAV_PAGE_SIZE),
   );
-}
-
-function FavouriteListCard({
-  activity,
-  onClick,
-}: {
-  activity: FundraisingActivity;
-  onClick: () => void;
-}) {
-  const goal = activity.goalAmount ?? 0;
-  const current = activity.currentAmount ?? 0;
-  const progress = goal > 0 ? Math.min((current / goal) * 100, 100) : 0;
+  const pagedFavourites = favourites.slice(
+    favPage * FAV_PAGE_SIZE,
+    favPage * FAV_PAGE_SIZE + FAV_PAGE_SIZE,
+  );
 
   return (
-    <div
-      onClick={onClick}
-      className="flex cursor-pointer items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
-    >
-      {/* Image */}
-      <div className="h-20 w-[120px] flex-shrink-0 overflow-hidden rounded-xl bg-gray-200">
-        {activity.imageUrl ? (
-          <img
-            src={activity.imageUrl}
-            alt={activity.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
-            <ImagePlaceholderIcon />
-          </div>
-        )}
-      </div>
+    <main className="min-h-screen bg-[#F3F3F3] px-4 py-8 text-[#08111F] sm:px-5">
+      <section className="mx-auto max-w-7xl rounded-[2rem] bg-white px-5 py-8 shadow-sm sm:px-8 md:px-10 lg:px-12">
+        <div className="border-b border-[#E1E5EA] pb-6">
+          <p className="text-sm font-medium text-[#40516E]">Donee</p>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-black">
+            Saved campaigns
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#64748b]">
+            Campaigns you have saved for quick access.
+          </p>
+        </div>
 
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-bold text-gray-900">{activity.title}</h3>
-        <p className="mt-0.5 text-xs text-gray-500">{activity.ownerName}</p>
-        {goal > 0 ? (
-          <div className="mt-2">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-              <div
-                className="h-full rounded-full bg-[#2f7a55] transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="mt-0.5 text-xs text-gray-500">
-              ${current.toLocaleString()} raised of ${goal.toLocaleString()}
-            </p>
+        <div className="mt-6">
+          <DoneeNav pathname={pathname} />
+        </div>
+
+        <div className="mt-6">
+          <div className="relative max-w-xl">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#94a3b8]">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              placeholder="Search saved campaigns"
+              value={searchQuery}
+              onChange={(e) => {
+                setFavPage(0);
+                setSearchQuery(e.target.value);
+              }}
+              className="w-full rounded-full border border-[#D7DCE2] bg-[#f8fafc] py-3 pl-11 pr-4 text-sm text-[#0f172a] outline-none transition placeholder:text-[#94a3b8] focus:border-[#2F7A55] focus:bg-white focus:ring-2 focus:ring-[#2F7A55]/20"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="mt-16 flex justify-center">
+            <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
           </div>
         ) : null}
-      </div>
 
-      {/* Heart — always filled green */}
-      <div className="flex-shrink-0 p-2">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#2f7a55" className="size-5">
-          <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
-        </svg>
-      </div>
-    </div>
+        {!isLoading && favourites.length === 0 ? (
+          <div className="mt-16 rounded-2xl border border-dashed border-[#D7DCE2] bg-[#fafafa] px-6 py-14 text-center">
+            <p className="text-base font-semibold text-[#334155]">
+              {searchQuery.trim()
+                ? `No saved campaigns match “${searchQuery.trim()}”.`
+                : "You have not saved any campaigns yet."}
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#64748b]">
+              Browse fundraisers and tap the heart on a card to save it here.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/donee")}
+              className="mt-6 rounded-full bg-[#2F7A55] px-6 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
+            >
+              Browse campaigns
+            </button>
+          </div>
+        ) : null}
+
+        {!isLoading && favourites.length > 0 ? (
+          <>
+            <div className="mt-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {pagedFavourites.map((activity) => (
+                <DoneeCampaignCard
+                  key={activity.id}
+                  activity={activity}
+                  heartMode="saved"
+                  onOpen={() =>
+                    router.push(`/donee/campaigns/${activity.id}`)
+                  }
+                />
+              ))}
+            </div>
+
+            {favourites.length > FAV_PAGE_SIZE ? (
+              <nav
+                className="mt-10 flex flex-col gap-3 border-t border-[#E1E5EA] pt-8 sm:flex-row sm:items-center sm:justify-between"
+                aria-label="Favourites pagination"
+              >
+                <p className="text-sm text-[#40516E]">
+                  Page {favPage + 1} of {favTotalPages} · {favourites.length}{" "}
+                  saved
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={favPage <= 0}
+                    onClick={() => setFavPage((p) => Math.max(0, p - 1))}
+                    className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={favPage >= favTotalPages - 1}
+                    onClick={() => setFavPage((p) => p + 1)}
+                    className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </nav>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    </main>
   );
 }
 
 function SearchIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-    </svg>
-  );
-}
-
-function ImagePlaceholderIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor" className="size-8 text-gray-400">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="size-4"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+      />
     </svg>
   );
 }

@@ -6,15 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
 /**
- * Layout shared untuk semua halaman Donee.
- *
- * Tanggung jawab:
- * 1. Auth guard: kalau user belum login, redirect ke /login
- * 2. Role guard: kalau user bukan Donee, redirect ke halaman yang sesuai role-nya
- * 3. Loading state: tampilkan spinner sementara cek auth/role
- * 4. Header: TrustFundr branding + avatar user + sign out button
- *
- * Layout ini otomatis di-apply ke SEMUA halaman /donee/* oleh Next.js App Router.
+ * Shared shell for Donee routes: auth + role guard, loading state, and header.
  */
 export default function DoneeLayout({
   children,
@@ -24,32 +16,27 @@ export default function DoneeLayout({
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
 
-  // Auth guard + Role guard
   useEffect(() => {
-    if (isLoading) return; // tunggu auth context selesai loading
+    if (isLoading) return;
 
-    // Belum login → redirect ke login
     if (!user) {
       router.replace("/login");
       return;
     }
 
-    // Sudah login tapi bukan Donee → redirect ke halaman yang sesuai role
     if (user.role !== "Donee") {
-      // Map role string ke path tujuan
       const redirectPath =
         user.role === "Admin"
           ? "/admin"
           : user.role === "Fund Raiser"
             ? "/fundraiser"
-            : user.role === "Platform Management"
+            : user.role === "Platform Manager"
               ? "/platform-manager"
-              : "/login"; // role tidak dikenali → tendang ke login
+              : "/login";
       router.replace(redirectPath);
     }
   }, [user, isLoading, router]);
 
-  // Loading spinner sementara cek auth
   if (isLoading || !user || user.role !== "Donee") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -58,7 +45,6 @@ export default function DoneeLayout({
     );
   }
 
-  // Ambil inisial nama user untuk avatar (huruf depan dari fullName)
   const initial = user.fullName.charAt(0).toUpperCase();
 
   async function handleLogout() {
@@ -68,7 +54,7 @@ export default function DoneeLayout({
 
   return (
     <main className="min-h-screen bg-white">
-      {/* Header: branding TrustFundr + sign out + avatar */}
+      {/* Donee chrome */}
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
@@ -94,7 +80,6 @@ export default function DoneeLayout({
         </div>
       </header>
 
-      {/* Children = halaman donee yang di-render di sini */}
       {children}
     </main>
   );

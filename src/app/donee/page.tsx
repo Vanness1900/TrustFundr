@@ -4,42 +4,87 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { listFundraisingActivities, saveFavourite } from "@/lib/donee-api";
-import { DUMMY_CAMPAIGNS } from "@/lib/donee-dummy";
+import {
+  listFundraisingActivities,
+  searchFundraisingActivities,
+  listMyFavourites,
+  saveFavourite,
+} from "@/lib/donee-api";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "@/lib/use-debounce";
 import type { FundraisingActivity } from "@/lib/donee-types";
+import { DoneeCampaignCard } from "@/components/donee-campaign-card";
+
+const PAGE_SIZE = 12;
 
 export default function DoneePage() {
-  const { token } = useAuth();
+  const { token, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const [activities, setActivities] = useState<FundraisingActivity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(
+    searchQuery,
+    SEARCH_DEBOUNCE_MS,
+  );
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [favouriteIds, setFavouriteIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [isAuthLoading, token, router]);
 
   useEffect(() => {
     if (!token) return;
 
     let cancelled = false;
-    setIsLoading(true);
 
-    listFundraisingActivities(token)
-      .then((data) => {
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setIsLoading(true);
+
+      const q = debouncedSearch.trim();
+      const activitiesPromise =
+        q.length > 0
+          ? searchFundraisingActivities(token, q, page, PAGE_SIZE)
+          : listFundraisingActivities(token, page, PAGE_SIZE);
+
+      try {
+        const [paged, favs] = await Promise.all([
+          activitiesPromise,
+          listMyFavourites(token),
+        ]);
         if (cancelled) return;
-        setActivities(data.length === 0 ? DUMMY_CAMPAIGNS : data);
-      })
-      .catch(() => {
-        if (!cancelled) setActivities(DUMMY_CAMPAIGNS);
-      })
-      .finally(() => {
+        setActivities(paged.content);
+        setTotalPages(Math.max(1, paged.totalPages));
+        setTotalElements(paged.totalElements);
+        setFavouriteIds(new Set(favs.map((f) => f.id)));
+      } catch {
+        if (!cancelled) {
+          setActivities([]);
+          setTotalPages(1);
+          setTotalElements(0);
+          setFavouriteIds(new Set());
+        }
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, debouncedSearch, page]);
 
   async function handleToggleFavourite(activityId: string) {
     if (!token) return;
@@ -61,74 +106,131 @@ export default function DoneePage() {
     }
   }
 
-  const filtered = activities.filter((a) => {
-    const q = searchQuery.toLowerCase();
+  if (isAuthLoading || !token) {
     return (
-      a.title.toLowerCase().includes(q) ||
-      (a.ownerName?.toLowerCase() ?? "").includes(q) ||
-      (a.category?.toLowerCase() ?? "").includes(q) ||
-      (a.location?.toLowerCase() ?? "").includes(q)
+      <main className="flex min-h-screen items-center justify-center bg-[#F3F3F3]">
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+      </main>
     );
-  });
+  }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      {/* Top nav */}
-      <DoneeNav pathname={pathname} />
-
-      {/* Search bar */}
-      <div className="mt-6 relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-          <SearchIcon />
-        </span>
-        <input
-          type="search"
-          placeholder="Start searching"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-full border border-gray-300 bg-white py-2.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
-        />
-      </div>
-
-      {/* Filter pills */}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <FilterPill label="Filter" />
-        <FilterPill label="Location" hasDropdown />
-        <FilterPill label="Category" hasDropdown />
-        <FilterPill label="All time" hasDropdown />
-      </div>
-
-      {/* Loading */}
-      {isLoading ? (
-        <div className="mt-12 flex justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2f7a55] border-t-transparent" />
+    <main className="min-h-screen bg-[#F3F3F3] px-4 py-8 text-[#08111F] sm:px-5">
+      <section className="mx-auto max-w-7xl rounded-[2rem] bg-white px-5 py-8 shadow-sm sm:px-8 md:px-10 lg:px-12">
+        <div className="flex flex-col gap-4 border-b border-[#E1E5EA] pb-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[#40516E]">Donee</p>
+            <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-black">
+              Browse campaigns
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#64748b]">
+              Discover fundraisers to support. Save campaigns you care about to
+              your favourites.
+            </p>
+          </div>
         </div>
-      ) : null}
 
-      {/* Empty state */}
-      {!isLoading && filtered.length === 0 ? (
-        <div className="mt-12 text-center text-sm text-gray-500">
-          {searchQuery
-            ? `No results found for "${searchQuery}".`
-            : "No fundraising activities available right now."}
+        <div className="mt-6">
+          <DoneeNav pathname={pathname} />
         </div>
-      ) : null}
 
-      {/* Horizontal list */}
-      {!isLoading && filtered.length > 0 ? (
-        <div className="mt-6 space-y-3">
-          {filtered.map((activity) => (
-            <CampaignListCard
-              key={activity.id}
-              activity={activity}
-              isFavourite={favouriteIds.has(activity.id)}
-              onToggleFavourite={() => handleToggleFavourite(activity.id)}
-              onClick={() => router.push(`/donee/campaigns/${activity.id}`)}
+        <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-5">
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#94a3b8]">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              placeholder="Start searching"
+              value={searchQuery}
+              onChange={(e) => {
+                setPage(0);
+                setSearchQuery(e.target.value);
+              }}
+              className="w-full rounded-full border border-[#D7DCE2] bg-[#f8fafc] py-3 pl-11 pr-4 text-sm text-[#0f172a] outline-none transition placeholder:text-[#94a3b8] focus:border-[#2F7A55] focus:bg-white focus:ring-2 focus:ring-[#2F7A55]/20"
             />
-          ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/donee/favourites")}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-[#2F7A55] bg-white px-5 py-3 text-sm font-semibold text-[#2F7A55] transition hover:bg-[#eaf5ef]"
+          >
+            <span className="text-red-500" aria-hidden="true">
+              ♥
+            </span>
+            Saved campaigns
+          </button>
         </div>
-      ) : null}
-    </div>
+
+        {isLoading ? (
+          <div className="mt-16 flex justify-center">
+            <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+          </div>
+        ) : null}
+
+        {!isLoading && activities.length === 0 ? (
+          <div className="mt-16 rounded-2xl border border-dashed border-[#D7DCE2] bg-[#fafafa] px-6 py-14 text-center">
+            <p className="text-base font-semibold text-[#334155]">
+              {searchQuery.trim()
+                ? `No results for “${searchQuery.trim()}”.`
+                : "No campaigns to show yet."}
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#64748b]">
+              Try another search, or check back later for new fundraisers.
+            </p>
+          </div>
+        ) : null}
+
+        {!isLoading && activities.length > 0 ? (
+          <>
+            <div className="mt-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {activities.map((activity) => (
+                <DoneeCampaignCard
+                  key={activity.id}
+                  activity={activity}
+                  heartMode="toggle"
+                  isFavourite={favouriteIds.has(activity.id)}
+                  onToggleFavourite={() =>
+                    void handleToggleFavourite(activity.id)
+                  }
+                  onOpen={() =>
+                    router.push(`/donee/campaigns/${activity.id}`)
+                  }
+                />
+              ))}
+            </div>
+
+            <nav
+              className="mt-10 flex flex-col gap-3 border-t border-[#E1E5EA] pt-8 sm:flex-row sm:items-center sm:justify-between"
+              aria-label="Campaign results pagination"
+            >
+              <p className="text-sm text-[#40516E]">
+                Page {page + 1} of {totalPages}
+                {totalElements > 0 ? ` · ${totalElements} campaigns` : null}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={page <= 0 || isLoading}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] transition hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={page >= totalPages - 1 || isLoading}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] transition hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </nav>
+          </>
+        ) : null}
+      </section>
+    </main>
   );
 }
 
@@ -139,13 +241,16 @@ export default function DoneePage() {
 export function DoneeNav({ pathname }: { pathname: string }) {
   const router = useRouter();
   const tabs = [
-    { label: "My Campaign", href: "/donee" },
-    { label: "Favourite", href: "/donee/favourites" },
-    { label: "Donation History", href: "/donee/donations" },
+    { label: "Browse", href: "/donee" },
+    { label: "Favourites", href: "/donee/favourites" },
+    { label: "Donation history", href: "/donee/donations" },
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <nav
+      className="flex flex-wrap gap-2"
+      aria-label="Donee sections"
+    >
       {tabs.map((tab) => {
         const isActive = pathname === tab.href;
         return (
@@ -154,141 +259,36 @@ export function DoneeNav({ pathname }: { pathname: string }) {
             type="button"
             onClick={() => router.push(tab.href)}
             className={[
-              "inline-flex rounded-full border px-4 py-1.5 text-sm font-medium transition",
+              "inline-flex rounded-full border px-5 py-2 text-sm font-semibold transition",
               isActive
-                ? "border-[#2f7a55] bg-[#2f7a55] text-white"
-                : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+                ? "border-[#2F7A55] bg-[#2F7A55] text-white shadow-sm"
+                : "border-[#D7DCE2] bg-white text-[#334155] hover:border-[#2F7A55] hover:text-[#2F7A55]",
             ].join(" ")}
           >
             {tab.label}
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// ============================================================
-// SUB-COMPONENTS
-// ============================================================
-
-function FilterPill({ label, hasDropdown }: { label: string; hasDropdown?: boolean }) {
-  return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-    >
-      {label}
-      {hasDropdown ? <ChevronIcon /> : null}
-    </button>
-  );
-}
-
-function CampaignListCard({
-  activity,
-  isFavourite,
-  onToggleFavourite,
-  onClick,
-}: {
-  activity: FundraisingActivity;
-  isFavourite: boolean;
-  onToggleFavourite: () => void;
-  onClick: () => void;
-}) {
-  const goal = activity.goalAmount ?? 0;
-  const current = activity.currentAmount ?? 0;
-  const progress = goal > 0 ? Math.min((current / goal) * 100, 100) : 0;
-
-  return (
-    <div className="flex cursor-pointer items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md">
-      {/* Image */}
-      <div
-        onClick={onClick}
-        className="h-20 w-[120px] flex-shrink-0 overflow-hidden rounded-xl bg-gray-200"
-      >
-        {activity.imageUrl ? (
-          <img
-            src={activity.imageUrl}
-            alt={activity.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
-            <ImagePlaceholderIcon />
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1" onClick={onClick}>
-        <h3 className="truncate text-sm font-bold text-gray-900">{activity.title}</h3>
-        <p className="mt-0.5 text-xs text-gray-500">{activity.ownerName}</p>
-        {goal > 0 ? (
-          <div className="mt-2">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-              <div
-                className="h-full rounded-full bg-[#2f7a55] transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="mt-0.5 text-xs text-gray-500">
-              ${current.toLocaleString()} raised of ${goal.toLocaleString()}
-            </p>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Heart */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavourite();
-        }}
-        className="flex-shrink-0 rounded-full p-2 transition hover:bg-gray-100"
-        aria-label={isFavourite ? "Remove from favourites" : "Add to favourites"}
-      >
-        <HeartIcon filled={isFavourite} />
-      </button>
-    </div>
-  );
-}
-
-function HeartIcon({ filled }: { filled: boolean }) {
-  if (filled) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#2f7a55" className="size-5">
-        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="size-5 text-gray-400">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-    </svg>
+    </nav>
   );
 }
 
 function SearchIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4 text-gray-500">
-      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
-    </svg>
-  );
-}
-
-function ImagePlaceholderIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor" className="size-8 text-gray-400">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="size-4"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+      />
     </svg>
   );
 }

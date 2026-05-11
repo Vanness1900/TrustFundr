@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "@/lib/use-debounce";
 
 type UserProfileRow = {
   id: string;
@@ -41,8 +45,18 @@ type UpdateUserAccountRequest = {
   userProfileId?: string;
 };
 
-const DEFAULT_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8080";
+/**
+ * When unset, use the current page origin (e.g. http://localhost:3000) so paths `/api/...` go through
+ * Next.js rewrites to the backend and avoid CORS. Set NEXT_PUBLIC_API_BASE_URL to call the API host directly.
+ */
+function apiRequestBase(): string {
+  const trimmed = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (trimmed) return trimmed.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost:8080";
+}
+
+const ADMIN_TABLE_PAGE_SIZE = 20;
 
 function getHeaders(token?: string | null): HeadersInit {
   const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -62,7 +76,7 @@ async function parseOrThrow<T>(
 }
 
 async function listUserProfiles(token?: string | null) {
-  const res = await fetch(`${DEFAULT_BASE_URL}/api/admin/user-profiles`, {
+  const res = await fetch(`${apiRequestBase()}/api/admin/user-profiles`, {
     method: "GET",
     headers: getHeaders(token),
   });
@@ -70,7 +84,7 @@ async function listUserProfiles(token?: string | null) {
 }
 
 async function listUserAccounts(token?: string | null) {
-  const res = await fetch(`${DEFAULT_BASE_URL}/api/admin/user-accounts`, {
+  const res = await fetch(`${apiRequestBase()}/api/admin/user-accounts`, {
     method: "GET",
     headers: getHeaders(token),
   });
@@ -82,7 +96,7 @@ async function createUserProfile(
   body: CreateUserProfileRequest,
 ) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-profiles/create-user-profile`,
+    `${apiRequestBase()}/api/admin/user-profiles/create-user-profile`,
     {
       method: "POST",
       headers: getHeaders(token),
@@ -98,7 +112,7 @@ async function updateUserProfile(
   body: UpdateUserProfileRequest,
 ) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-profiles/update-user-profile/${encodeURIComponent(id)}`,
+    `${apiRequestBase()}/api/admin/user-profiles/update-user-profile/${encodeURIComponent(id)}`,
     {
       method: "PUT",
       headers: getHeaders(token),
@@ -110,7 +124,7 @@ async function updateUserProfile(
 
 async function suspendUserProfile(token: string | null | undefined, id: string) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-profiles/suspend-user-profile/${encodeURIComponent(id)}`,
+    `${apiRequestBase()}/api/admin/user-profiles/suspend-user-profile/${encodeURIComponent(id)}`,
     {
       method: "POST",
       headers: getHeaders(token),
@@ -124,7 +138,7 @@ async function createUserAccount(
   body: CreateUserAccountRequest,
 ) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-accounts/create-user-account`,
+    `${apiRequestBase()}/api/admin/user-accounts/create-user-account`,
     {
       method: "POST",
       headers: getHeaders(token),
@@ -140,7 +154,7 @@ async function updateUserAccount(
   body: UpdateUserAccountRequest,
 ) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-accounts/update-user-account/${encodeURIComponent(id)}`,
+    `${apiRequestBase()}/api/admin/user-accounts/update-user-account/${encodeURIComponent(id)}`,
     {
       method: "PUT",
       headers: getHeaders(token),
@@ -152,13 +166,43 @@ async function updateUserAccount(
 
 async function suspendUserAccount(token: string | null | undefined, id: string) {
   const res = await fetch(
-    `${DEFAULT_BASE_URL}/api/admin/user-accounts/suspend-user-account/${encodeURIComponent(id)}`,
+    `${apiRequestBase()}/api/admin/user-accounts/suspend-user-account/${encodeURIComponent(id)}`,
     {
       method: "POST",
       headers: getHeaders(token),
     },
   );
   return parseOrThrow<UserAccountRow>(res, "Failed to suspend user account.");
+}
+
+async function searchUserProfilesApi(
+  token: string | null | undefined,
+  q: string,
+) {
+  const url = new URL(
+    `${apiRequestBase()}/api/admin/user-profiles/search-user-profiles`,
+  );
+  url.searchParams.set("q", q.trim());
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: getHeaders(token),
+  });
+  return parseOrThrow<UserProfileRow[]>(res, "Failed to search user profiles.");
+}
+
+async function searchUserAccountsApi(
+  token: string | null | undefined,
+  q: string,
+) {
+  const url = new URL(
+    `${apiRequestBase()}/api/admin/user-accounts/search-user-accounts`,
+  );
+  url.searchParams.set("q", q.trim());
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: getHeaders(token),
+  });
+  return parseOrThrow<UserAccountRow[]>(res, "Failed to search user accounts.");
 }
 
 function Pill({
@@ -173,7 +217,7 @@ function Pill({
       className={[
         "inline-flex rounded-full border px-4 py-1.5 text-sm font-medium transition",
         active
-          ? "border-[#2f7a55] bg-[#2f7a55] text-white"
+          ? "border-[#2F7A55] bg-[#2F7A55] text-white"
           : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
       ].join(" ")}
     >
@@ -216,7 +260,7 @@ function SectionHeader({
             placeholder={searchPlaceholder}
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full min-w-[260px] rounded-full border border-gray-300 bg-white py-2 pl-8 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
+            className="w-full min-w-[260px] rounded-full border border-gray-300 bg-white py-2 pl-8 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
           />
         </div>
         {onFilter ? (
@@ -247,7 +291,7 @@ function SectionHeader({
           <button
             type="button"
             onClick={onAction}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#2F7A55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95"
           >
             <span className="text-base leading-none">+</span>
             {actionLabel}
@@ -404,14 +448,21 @@ function ModalShell({
 function Field({
   label,
   children,
+  error,
 }: {
   label: string;
   children: React.ReactNode;
+  error?: string;
 }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-gray-800">{label}</span>
       {children}
+      {error ? (
+        <p className="mt-1.5 text-sm text-red-600" role="alert">
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }
@@ -423,6 +474,8 @@ function TextInput({
   disabled,
   inputMode,
   type,
+  maxLength,
+  minLength,
 }: {
   value: string;
   onChange?: (v: string) => void;
@@ -430,6 +483,8 @@ function TextInput({
   disabled?: boolean;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   type?: React.InputHTMLAttributes<HTMLInputElement>["type"];
+  maxLength?: number;
+  minLength?: number;
 }) {
   return (
     <input
@@ -439,9 +494,11 @@ function TextInput({
       placeholder={placeholder}
       disabled={disabled}
       inputMode={inputMode}
+      maxLength={maxLength}
+      minLength={minLength}
       className={[
         "w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition",
-        "focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20",
+        "focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20",
         disabled ? "cursor-not-allowed bg-gray-100 text-gray-500" : "",
       ].join(" ")}
     />
@@ -461,7 +518,7 @@ function SelectInput({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2f7a55] focus:ring-2 focus:ring-[#2f7a55]/20"
+      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -487,17 +544,11 @@ function CheckboxInput({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 rounded border-gray-300 text-[#2f7a55] focus:ring-[#2f7a55]"
+        className="h-4 w-4 rounded border-gray-300 text-[#2F7A55] focus:ring-[#2F7A55]"
       />
       <span>{label}</span>
     </label>
   );
-}
-
-function newId(prefix: string) {
-  // Short, readable, unique-enough for demo UI state.
-  const n = Math.floor(1000 + Math.random() * 9000);
-  return `${prefix}-${n}`;
 }
 
 function PencilButton({ onClick, label }: { onClick: () => void; label: string }) {
@@ -506,7 +557,7 @@ function PencilButton({ onClick, label }: { onClick: () => void; label: string }
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="inline-flex items-center justify-center rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+      className="inline-flex items-center justify-center rounded-full p-1 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -559,12 +610,28 @@ function TrashButton({ onClick, label }: { onClick: () => void; label: string })
 }
 
 export default function AdminPage() {
-  const { user, token, isLoading, logout } = useAuth();
+  const { user, token, isLoading } = useAuth();
   const router = useRouter();
   const [userProfiles, setUserProfiles] = useState<UserProfileRow[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccountRow[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
+  /** Table list/search fetch only — not modal validation. */
+  const [listLoadError, setListLoadError] = useState<string | null>(null);
+  const [profileFieldErrors, setProfileFieldErrors] = useState<{
+    name?: string;
+  }>({});
+  const [profileSubmitError, setProfileSubmitError] = useState<string | null>(
+    null,
+  );
+  const [accountFieldErrors, setAccountFieldErrors] = useState<{
+    fullName?: string;
+    username?: string;
+    userProfileId?: string;
+    password?: string;
+  }>({});
+  const [accountSubmitError, setAccountSubmitError] = useState<string | null>(
+    null,
+  );
 
   const [openProfileModal, setOpenProfileModal] = useState(false);
   const [openAccountModal, setOpenAccountModal] = useState(false);
@@ -573,6 +640,17 @@ export default function AdminPage() {
   const [accountMode, setAccountMode] = useState<"create" | "edit">("create");
   const [profileSearch, setProfileSearch] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
+  const debouncedProfileSearch = useDebouncedValue(
+    profileSearch,
+    SEARCH_DEBOUNCE_MS,
+  );
+  const debouncedAccountSearch = useDebouncedValue(
+    accountSearch,
+    SEARCH_DEBOUNCE_MS,
+  );
+
+  const [profilePage, setProfilePage] = useState(0);
+  const [accountPage, setAccountPage] = useState(0);
 
   const [profileDraft, setProfileDraft] = useState<UserProfileRow>(() => ({
     id: "",
@@ -589,38 +667,6 @@ export default function AdminPage() {
   }));
   const [accountPassword, setAccountPassword] = useState("");
 
-  const filteredUserProfiles = useMemo(() => {
-    const q = profileSearch.trim().toLowerCase();
-    return userProfiles.filter((p) => {
-      const matchesText =
-        !q ||
-        [p.id, p.name, p.description ?? ""]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      return matchesText;
-    });
-  }, [userProfiles, profileSearch]);
-
-  const filteredUserAccounts = useMemo(() => {
-    const q = accountSearch.trim().toLowerCase();
-    return userAccounts.filter((a) => {
-      const matchesText =
-        !q ||
-        [
-          a.id,
-          a.username,
-          a.fullName,
-          a.userProfileId,
-          a.userProfileName,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      return matchesText;
-    });
-  }, [userAccounts, accountSearch]);
-
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
@@ -630,9 +676,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (isLoading || !user || !token) return;
     let cancelled = false;
+    const qp = debouncedProfileSearch.trim();
+    const qa = debouncedAccountSearch.trim();
     setIsDataLoading(true);
-    setDataError(null);
-    Promise.all([listUserProfiles(token), listUserAccounts(token)])
+    setListLoadError(null);
+    Promise.all([
+      qp ? searchUserProfilesApi(token, qp) : listUserProfiles(token),
+      qa ? searchUserAccountsApi(token, qa) : listUserAccounts(token),
+    ])
       .then(([profiles, accounts]) => {
         if (cancelled) return;
         setUserProfiles(profiles);
@@ -640,7 +691,9 @@ export default function AdminPage() {
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setDataError(e instanceof Error ? e.message : "Failed to load admin data.");
+        setListLoadError(
+          e instanceof Error ? e.message : "Failed to load admin data.",
+        );
       })
       .finally(() => {
         if (cancelled) return;
@@ -649,7 +702,34 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoading, token, user]);
+  }, [isLoading, token, user, debouncedProfileSearch, debouncedAccountSearch]);
+
+  useEffect(() => {
+    setProfilePage(0);
+  }, [debouncedProfileSearch]);
+
+  useEffect(() => {
+    setAccountPage(0);
+  }, [debouncedAccountSearch]);
+
+  const profileRowsPage = useMemo(() => {
+    const start = profilePage * ADMIN_TABLE_PAGE_SIZE;
+    return userProfiles.slice(start, start + ADMIN_TABLE_PAGE_SIZE);
+  }, [userProfiles, profilePage]);
+
+  const accountRowsPage = useMemo(() => {
+    const start = accountPage * ADMIN_TABLE_PAGE_SIZE;
+    return userAccounts.slice(start, start + ADMIN_TABLE_PAGE_SIZE);
+  }, [userAccounts, accountPage]);
+
+  const profileTotalPages = Math.max(
+    1,
+    Math.ceil(userProfiles.length / ADMIN_TABLE_PAGE_SIZE),
+  );
+  const accountTotalPages = Math.max(
+    1,
+    Math.ceil(userAccounts.length / ADMIN_TABLE_PAGE_SIZE),
+  );
 
   const profileColumns = useMemo(
     () => [
@@ -659,14 +739,21 @@ export default function AdminPage() {
         render: (r: UserProfileRow) => (
           <div className="flex items-center gap-2">
             <PencilButton
-              label={`Edit ${r.id}`}
+              label={`Edit profile: ${r.name}`}
               onClick={() => {
                 setProfileMode("edit");
                 setProfileDraft(r);
+                setProfileFieldErrors({});
+                setProfileSubmitError(null);
                 setOpenProfileModal(true);
               }}
             />
-            <span className="font-medium">{r.id}</span>
+            <span
+              className="font-mono text-xs font-medium text-gray-700"
+              title={r.id}
+            >
+              {r.id.length > 12 ? `${r.id.slice(0, 8)}…` : r.id}
+            </span>
           </div>
         ),
       },
@@ -688,15 +775,22 @@ export default function AdminPage() {
         render: (r: UserAccountRow) => (
           <div className="flex items-center gap-2">
             <PencilButton
-              label={`Edit ${r.id}`}
+              label={`Edit account: ${r.username}`}
               onClick={() => {
                 setAccountMode("edit");
                 setAccountDraft(r);
                 setAccountPassword("");
+                setAccountFieldErrors({});
+                setAccountSubmitError(null);
                 setOpenAccountModal(true);
               }}
             />
-            <span className="font-medium">{r.id}</span>
+            <span
+              className="font-mono text-xs font-medium text-gray-700"
+              title={r.id}
+            >
+              {r.id.length > 12 ? `${r.id.slice(0, 8)}…` : r.id}
+            </span>
           </div>
         ),
       },
@@ -713,15 +807,10 @@ export default function AdminPage() {
 
   if (isLoading || !user) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2f7a55] border-t-transparent" />
-      </main>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+      </div>
     );
-  }
-
-  async function handleLogout() {
-    await logout();
-    router.push("/login");
   }
 
   function openAddUserProfile() {
@@ -731,6 +820,8 @@ export default function AdminPage() {
       name: "",
       description: "",
     });
+    setProfileFieldErrors({});
+    setProfileSubmitError(null);
     setOpenProfileModal(true);
   }
 
@@ -744,30 +835,13 @@ export default function AdminPage() {
       userProfileName: "",
     });
     setAccountPassword("");
+    setAccountFieldErrors({});
+    setAccountSubmitError(null);
     setOpenAccountModal(true);
   }
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-extrabold tracking-tight text-[#2f7a55]">
-              TrustFundr
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f7a55] text-sm font-extrabold text-white"
-              aria-label="Admin avatar"
-              title={user.fullName}
-            >
-              T
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl px-6 py-8">
         <p className="text-sm text-gray-600">Welcome, {user.fullName}!</p>
         <h1 className="mt-1 text-2xl font-bold text-gray-900">
@@ -777,24 +851,15 @@ export default function AdminPage() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Pill active>User Profiles</Pill>
           <Pill active>User Accounts</Pill>
-
-          <div className="ml-auto">
-            <button
-              onClick={handleLogout}
-              className="rounded-full border border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Sign Out
-            </button>
-          </div>
         </div>
 
-        {dataError ? (
+        {listLoadError ? (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {dataError}
+            {listLoadError}
           </div>
         ) : null}
 
-        <h2 className="mt-10 text-5xl font-extrabold tracking-tight text-[#2f7a55]">
+        <h2 className="mt-10 text-5xl font-extrabold tracking-tight text-[#2F7A55]">
           Dashboard
         </h2>
 
@@ -808,8 +873,37 @@ export default function AdminPage() {
             onAction={openAddUserProfile}
           />
           <TableShell>
-            <DataTable columns={profileColumns} rows={filteredUserProfiles} />
+            <DataTable columns={profileColumns} rows={profileRowsPage} />
           </TableShell>
+          {userProfiles.length > ADMIN_TABLE_PAGE_SIZE ? (
+            <nav
+              className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              aria-label="User profiles pagination"
+            >
+              <p className="text-sm text-gray-600">
+                Page {profilePage + 1} of {profileTotalPages} ·{" "}
+                {userProfiles.length} profiles
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={profilePage <= 0}
+                  onClick={() => setProfilePage((p) => Math.max(0, p - 1))}
+                  className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={profilePage >= profileTotalPages - 1}
+                  onClick={() => setProfilePage((p) => p + 1)}
+                  className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </nav>
+          ) : null}
         </section>
 
         <section className="mt-12">
@@ -822,16 +916,48 @@ export default function AdminPage() {
             onAction={openAddUserAccount}
           />
           <TableShell>
-            <DataTable columns={accountColumns} rows={filteredUserAccounts} />
+            <DataTable columns={accountColumns} rows={accountRowsPage} />
           </TableShell>
+          {userAccounts.length > ADMIN_TABLE_PAGE_SIZE ? (
+            <nav
+              className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              aria-label="User accounts pagination"
+            >
+              <p className="text-sm text-gray-600">
+                Page {accountPage + 1} of {accountTotalPages} ·{" "}
+                {userAccounts.length} accounts
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={accountPage <= 0}
+                  onClick={() => setAccountPage((p) => Math.max(0, p - 1))}
+                  className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={accountPage >= accountTotalPages - 1}
+                  onClick={() => setAccountPage((p) => p + 1)}
+                  className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </nav>
+          ) : null}
         </section>
       </div>
 
       <ModalShell
         open={openProfileModal}
         title={profileMode === "edit" ? "Edit User Profile" : "Add User Profile"}
-        description="User profiles map to backend table user_profiles."
-        onClose={() => setOpenProfileModal(false)}
+        onClose={() => {
+          setOpenProfileModal(false);
+          setProfileFieldErrors({});
+          setProfileSubmitError(null);
+        }}
       >
         <form
           className="space-y-5"
@@ -843,11 +969,12 @@ export default function AdminPage() {
               description: profileDraft.description ?? "",
             };
             if (!body.name) {
-              setDataError("Profile name is required.");
+              setProfileFieldErrors({ name: "Profile name is required." });
               return;
             }
             setIsDataLoading(true);
-            setDataError(null);
+            setProfileFieldErrors({});
+            setProfileSubmitError(null);
             try {
               const saved =
                 profileMode === "edit"
@@ -861,7 +988,9 @@ export default function AdminPage() {
               });
               setOpenProfileModal(false);
             } catch (err: unknown) {
-              setDataError(err instanceof Error ? err.message : "Failed to save user profile.");
+              setProfileSubmitError(
+                err instanceof Error ? err.message : "Failed to save user profile.",
+              );
             } finally {
               setIsDataLoading(false);
             }
@@ -871,10 +1000,13 @@ export default function AdminPage() {
             <Field label="Profile ID">
               <TextInput value={profileDraft.id || "Auto-generated"} disabled />
             </Field>
-            <Field label="Name">
+            <Field label="Name" error={profileFieldErrors.name}>
               <TextInput
                 value={profileDraft.name}
-                onChange={(v) => setProfileDraft((p) => ({ ...p, name: v }))}
+                onChange={(v) => {
+                  setProfileFieldErrors((e) => ({ ...e, name: undefined }));
+                  setProfileDraft((p) => ({ ...p, name: v }));
+                }}
                 placeholder="e.g. Admin"
               />
             </Field>
@@ -889,7 +1021,16 @@ export default function AdminPage() {
             </Field>
           </div>
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          {profileSubmitError ? (
+            <div
+              className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 sm:col-span-2"
+              role="alert"
+            >
+              {profileSubmitError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <div className="flex items-center justify-end gap-3">
               {profileMode === "edit" ? (
                 <TrashButton
@@ -897,7 +1038,7 @@ export default function AdminPage() {
                   onClick={async () => {
                     if (!token) return;
                     setIsDataLoading(true);
-                    setDataError(null);
+                    setProfileSubmitError(null);
                     try {
                       await suspendUserProfile(token, profileDraft.id);
                       setUserProfiles((prev) =>
@@ -905,7 +1046,7 @@ export default function AdminPage() {
                       );
                       setOpenProfileModal(false);
                     } catch (err: unknown) {
-                      setDataError(
+                      setProfileSubmitError(
                         err instanceof Error
                           ? err.message
                           : "Failed to suspend user profile.",
@@ -925,7 +1066,7 @@ export default function AdminPage() {
               </button>
               <button
                 type="submit"
-                className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
+                className="rounded-full bg-[#2F7A55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95"
               >
                 Save
               </button>
@@ -937,8 +1078,11 @@ export default function AdminPage() {
       <ModalShell
         open={openAccountModal}
         title={accountMode === "edit" ? "Edit User Account" : "Add User Account"}
-        description="User accounts map to backend table user_accounts."
-        onClose={() => setOpenAccountModal(false)}
+        onClose={() => {
+          setOpenAccountModal(false);
+          setAccountFieldErrors({});
+          setAccountSubmitError(null);
+        }}
       >
         <form
           className="space-y-5"
@@ -948,25 +1092,39 @@ export default function AdminPage() {
             const selectedProfile = userProfiles.find(
               (p) => p.id === accountDraft.userProfileId,
             );
+            const nextAccountErrors: typeof accountFieldErrors = {};
             if (!accountDraft.fullName.trim()) {
-              setDataError("Full name is required.");
-              return;
+              nextAccountErrors.fullName = "Full name is required.";
             }
             if (!accountDraft.username.trim()) {
-              setDataError("Username is required.");
-              return;
+              nextAccountErrors.username = "Username is required.";
             }
             if (!accountDraft.userProfileId) {
-              setDataError("User profile is required.");
-              return;
+              nextAccountErrors.userProfileId = "User profile is required.";
             }
             if (accountMode === "create" && !accountPassword.trim()) {
-              setDataError("Password is required for new accounts.");
+              nextAccountErrors.password = "Password is required for new accounts.";
+            } else if (
+              accountMode === "create" &&
+              accountPassword.trim().length > 0 &&
+              accountPassword.length < 6
+            ) {
+              nextAccountErrors.password = "Password must be at least 6 characters.";
+            } else if (
+              accountMode === "edit" &&
+              accountPassword.trim().length > 0 &&
+              accountPassword.length < 6
+            ) {
+              nextAccountErrors.password = "Password must be at least 6 characters.";
+            }
+            if (Object.keys(nextAccountErrors).length > 0) {
+              setAccountFieldErrors(nextAccountErrors);
               return;
             }
 
             setIsDataLoading(true);
-            setDataError(null);
+            setAccountFieldErrors({});
+            setAccountSubmitError(null);
             try {
               const saved =
                 accountMode === "edit"
@@ -985,7 +1143,7 @@ export default function AdminPage() {
                       password: accountPassword,
                     } satisfies CreateUserAccountRequest);
 
-              // Ensure display name matches selected profile (backend also returns name)
+              // Prefer profile name from save response; fall back to selection
               const merged: UserAccountRow = {
                 ...saved,
                 userProfileName:
@@ -1003,7 +1161,7 @@ export default function AdminPage() {
               setAccountPassword("");
               setOpenAccountModal(false);
             } catch (err: unknown) {
-              setDataError(
+              setAccountSubmitError(
                 err instanceof Error ? err.message : "Failed to save user account.",
               );
             } finally {
@@ -1015,24 +1173,31 @@ export default function AdminPage() {
             <Field label="Account ID">
               <TextInput value={accountDraft.id || "Auto-generated"} disabled />
             </Field>
-            <Field label="Username">
+            <Field label="Username" error={accountFieldErrors.username}>
               <TextInput
                 value={accountDraft.username}
-                onChange={(v) => setAccountDraft((a) => ({ ...a, username: v }))}
+                onChange={(v) => {
+                  setAccountFieldErrors((e) => ({ ...e, username: undefined }));
+                  setAccountDraft((a) => ({ ...a, username: v }));
+                }}
                 placeholder="e.g. jane_doe"
               />
             </Field>
-            <Field label="Full Name">
+            <Field label="Full Name" error={accountFieldErrors.fullName}>
               <TextInput
                 value={accountDraft.fullName}
-                onChange={(v) => setAccountDraft((a) => ({ ...a, fullName: v }))}
+                onChange={(v) => {
+                  setAccountFieldErrors((e) => ({ ...e, fullName: undefined }));
+                  setAccountDraft((a) => ({ ...a, fullName: v }));
+                }}
                 placeholder="e.g. Jane Doe"
               />
             </Field>
-            <Field label="User Profile">
+            <Field label="User Profile" error={accountFieldErrors.userProfileId}>
               <SelectInput
                 value={accountDraft.userProfileId}
                 onChange={(v) => {
+                  setAccountFieldErrors((e) => ({ ...e, userProfileId: undefined }));
                   const p = userProfiles.find((x) => x.id === v);
                   setAccountDraft((a) => ({
                     ...a,
@@ -1049,17 +1214,33 @@ export default function AdminPage() {
                 ]}
               />
             </Field>
-            <Field label={accountMode === "edit" ? "Password (optional)" : "Password"}>
+            <Field
+              label={accountMode === "edit" ? "Password (optional)" : "Password"}
+              error={accountFieldErrors.password}
+            >
               <TextInput
                 type="password"
                 value={accountPassword}
-                onChange={setAccountPassword}
+                onChange={(v) => {
+                  setAccountFieldErrors((e) => ({ ...e, password: undefined }));
+                  setAccountPassword(v);
+                }}
                 placeholder={accountMode === "edit" ? "Leave blank to keep unchanged" : "Enter a password"}
+                maxLength={72}
               />
             </Field>
           </div>
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          {accountSubmitError ? (
+            <div
+              className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              role="alert"
+            >
+              {accountSubmitError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <div className="flex items-center justify-end gap-3">
               {accountMode === "edit" ? (
                 <TrashButton
@@ -1067,7 +1248,7 @@ export default function AdminPage() {
                   onClick={async () => {
                     if (!token) return;
                     setIsDataLoading(true);
-                    setDataError(null);
+                    setAccountSubmitError(null);
                     try {
                       await suspendUserAccount(token, accountDraft.id);
                       setUserAccounts((prev) =>
@@ -1075,7 +1256,7 @@ export default function AdminPage() {
                       );
                       setOpenAccountModal(false);
                     } catch (err: unknown) {
-                      setDataError(
+                      setAccountSubmitError(
                         err instanceof Error
                           ? err.message
                           : "Failed to suspend user account.",
@@ -1095,7 +1276,7 @@ export default function AdminPage() {
               </button>
               <button
                 type="submit"
-                className="rounded-full bg-[#2f7a55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#286a4a]"
+                className="rounded-full bg-[#2F7A55] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95"
               >
                 Save
               </button>
@@ -1103,7 +1284,7 @@ export default function AdminPage() {
           </div>
         </form>
       </ModalShell>
-    </main>
+    </div>
   );
 }
 

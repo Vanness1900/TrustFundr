@@ -86,8 +86,18 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+/** Stored in sessionStorage (not localStorage) so the tab/session has no lingering app data beyond browser session semantics. */
 const TOKEN_KEY = "trustfundr_token";
 const USER_KEY = "trustfundr_user";
+
+function browserSession(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 function parseStoredUserSnapshot(raw: string): StoredUserSnapshot | null {
   try {
@@ -114,18 +124,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedUser = localStorage.getItem(USER_KEY);
+    const store = browserSession();
+    const storedToken = store?.getItem(TOKEN_KEY) ?? null;
+    const storedUser = store?.getItem(USER_KEY) ?? null;
     queueMicrotask(() => {
-      if (storedToken && storedUser) {
+      if (storedToken && storedUser && store) {
         const snapshot = parseStoredUserSnapshot(storedUser);
         const role = getAppRoleFromJwt(storedToken);
         if (snapshot && role) {
           setToken(storedToken);
           setUser({ ...snapshot, role });
         } else {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_KEY);
+          store.removeItem(TOKEN_KEY);
+          store.removeItem(USER_KEY);
         }
       }
       setIsLoading(false);
@@ -151,8 +162,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName: userData.fullName,
       username: userData.username,
     };
-    localStorage.setItem(TOKEN_KEY, response.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(snapshot));
+    const store = browserSession();
+    store?.setItem(TOKEN_KEY, response.token);
+    store?.setItem(USER_KEY, JSON.stringify(snapshot));
     setToken(response.token);
     setUser(userData);
     return userData;
@@ -164,8 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Server-side logout is best-effort for stateless JWT
     }
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    const store = browserSession();
+    store?.removeItem(TOKEN_KEY);
+    store?.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
   }, [token]);

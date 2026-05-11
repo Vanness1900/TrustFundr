@@ -4,7 +4,7 @@ const AUTHORITY_TO_APP_ROLE: Record<string, string> = {
   ROLE_ADMIN: "Admin",
   ROLE_DONEE: "Donee",
   ROLE_FUNDRAISER: "Fund Raiser",
-  ROLE_PLATFORM_MANAGEMENT: "Platform Management",
+  ROLE_PLATFORM_MANAGEMENT: "Platform Manager",
 };
 
 type JwtPayload = {

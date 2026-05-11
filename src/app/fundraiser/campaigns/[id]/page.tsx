@@ -1,14 +1,13 @@
 "use client";
-import { getDummyFundraisingActivityById } from "@/lib/fundraiser-demo-campaigns";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
+  getCompletedFundraisingActivities,
   getFundraisingActivityById,
   getMyFundraisingActivities,
 } from "@/lib/fundraiser-api";
 import type { FundraisingActivity } from "@/lib/fundraiser-types";
-import { mergeFundraiserLocalExtra } from "@/lib/fundraiser-local-extra";
 
 export default function CampaignViewPage() {
   const params = useParams<{ id: string }>();
@@ -38,18 +37,26 @@ export default function CampaignViewPage() {
       setError(null);
 
       try {
-        let data = await getFundraisingActivityById(token, params.id);
-
-        if (!data) {
-          const allActivities = await getMyFundraisingActivities(token);
-          data =
-            allActivities?.find(
-              (activity) => String(activity.id) === String(params.id),
-            ) ?? null;
-        }
-
-        if (!data) {
-          data = getDummyFundraisingActivityById(params.id);
+        let data: FundraisingActivity | null = null;
+        try {
+          data = await getFundraisingActivityById(token, params.id);
+        } catch {
+          try {
+            const [activeRows, completedRows] = await Promise.all([
+              getMyFundraisingActivities(token),
+              getCompletedFundraisingActivities(token),
+            ]);
+            data =
+              activeRows.find(
+                (activity) => String(activity.id) === String(params.id),
+              ) ??
+              completedRows.find(
+                (activity) => String(activity.id) === String(params.id),
+              ) ??
+              null;
+          } catch {
+            data = null;
+          }
         }
 
         if (cancelled) return;
@@ -60,7 +67,7 @@ export default function CampaignViewPage() {
           return;
         }
 
-        setCampaign(mergeFundraiserLocalExtra(data));
+        setCampaign(data);
       } catch {
         if (cancelled) return;
 
@@ -83,7 +90,7 @@ export default function CampaignViewPage() {
   if (isAuthLoading || isLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f3f3f3]">
-        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2f865b] border-t-transparent" />
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
       </main>
     );
   }
@@ -95,7 +102,7 @@ export default function CampaignViewPage() {
           <button
             type="button"
             onClick={() => router.push("/fundraiser")}
-            className="text-sm font-medium text-[#2f865b] hover:text-[#26704c]"
+            className="text-sm font-medium text-[#2F7A55] hover:text-[#2F7A55]"
           >
             ← Back
           </button>
@@ -119,7 +126,7 @@ export default function CampaignViewPage() {
         <button
           type="button"
           onClick={() => router.push("/fundraiser")}
-          className="text-sm font-medium text-[#64748b] transition hover:text-[#2f865b]"
+          className="text-sm font-medium text-[#64748b] transition hover:text-[#2F7A55]"
         >
           ← Back to dashboard
         </button>
@@ -192,7 +199,7 @@ export default function CampaignViewPage() {
                 <div
                   className="absolute inset-0 rounded-full"
                   style={{
-                    background: `conic-gradient(#2f865b ${progress}%, #e5e7eb ${progress}% 100%)`,
+                    background: `conic-gradient(#2F7A55 ${progress}%, #e5e7eb ${progress}% 100%)`,
                   }}
                 />
                 <div className="absolute inset-[12px] rounded-full bg-white" />
@@ -265,7 +272,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-2xl bg-[#eef6f1] px-4 py-5 text-center">
-      <p className="text-2xl font-extrabold text-[#2f865b]">
+      <p className="text-2xl font-extrabold text-[#2F7A55]">
         {value.toLocaleString()}
       </p>
       <p className="mt-1 text-xs font-medium text-[#5f6b66]">{label}</p>

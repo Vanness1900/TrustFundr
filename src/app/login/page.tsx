@@ -4,16 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
-/**
- * Map role string dari backend ke path tujuan setelah login.
- * Sesuai dengan UserProfile.name di database:
- *   - "Admin"               → /admin
- *   - "Donee"               → /donee
- *   - "Fund Raiser"         → /fundraiser (pakai SPASI, sesuai backend)
- *   - "Platform Management" → /platform
- *
- * Kalau role tidak dikenal (data corrupt?), tendang balik ke /login.
- */
+/** Role label from login → home route for that role. */
 function redirectPathByRole(role: string): string {
   switch (role) {
     case "Admin":
@@ -22,7 +13,7 @@ function redirectPathByRole(role: string): string {
       return "/donee";
     case "Fund Raiser":
       return "/fundraiser";
-    case "Platform Management":
+    case "Platform Manager":
       return "/platform-manager";
     default:
       return "/login";
@@ -47,7 +38,7 @@ export default function LoginPage() {
       user && loggedInRedirectPath && loggedInRedirectPath !== "/login",
     );
 
-  // Redirect kalau user sudah login (misal buka /login lagi padahal udah login).
+  // Already signed in → send user to their role home (e.g. reopening /login).
   useEffect(() => {
     if (!isLoading && user && loggedInRedirectPath && loggedInRedirectPath !== "/login") {
       router.replace(loggedInRedirectPath);
@@ -71,12 +62,10 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      // login() sekarang return User data (termasuk role)
       const loggedInUser = await login({
         username: username.trim(),
         password,
       });
-      // Redirect berdasarkan role user
       router.push(redirectPathByRole(loggedInUser.role));
     } catch (err) {
       setError(
@@ -90,7 +79,7 @@ export default function LoginPage() {
   if (showRedirectSpinner) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1a4a3a] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
       </main>
     );
   }
@@ -99,10 +88,10 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-10">
       <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm sm:p-10">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-full bg-[#1a4a3a] text-white">
+          <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-full bg-[#2F7A55] text-white">
             T
           </div>
-          <p className="text-lg font-semibold text-[#1a4a3a]">TrustFundr</p>
+          <p className="text-lg font-semibold text-[#2F7A55]">TrustFundr</p>
           <h1 className="mt-5 text-3xl font-bold text-gray-900">
             Welcome Back
           </h1>
@@ -129,7 +118,7 @@ export default function LoginPage() {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
               disabled={isSubmitting}
-              className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-[#1a4a3a] focus:ring-2 focus:ring-[#1a4a3a]/20 disabled:opacity-50"
+              className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20 disabled:opacity-50"
             />
           </div>
 
@@ -148,12 +137,12 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 disabled={isSubmitting}
-                className="w-full rounded-md border border-gray-200 px-3 py-2.5 pr-20 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-[#1a4a3a] focus:ring-2 focus:ring-[#1a4a3a]/20 disabled:opacity-50"
+                className="w-full rounded-md border border-gray-200 px-3 py-2.5 pr-20 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20 disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-[#1a4a3a]"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-[#2F7A55]"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -163,7 +152,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-md bg-[#1a4a3a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#153d30] disabled:opacity-50"
+            className="w-full rounded-md bg-[#2F7A55] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
           >
             {isSubmitting ? "Signing in…" : "Sign In →"}
           </button>

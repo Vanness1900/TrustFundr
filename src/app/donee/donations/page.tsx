@@ -2,24 +2,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { listMyDonations } from "@/lib/donee-api";
-import { DUMMY_DONATIONS } from "@/lib/donee-dummy";
+import { listMyDonations, searchMyDonations } from "@/lib/donee-api";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "@/lib/use-debounce";
 import { DoneeNav } from "@/app/donee/page";
-import type { DonationDisplayItem } from "@/lib/donee-dummy";
 import type { DonationHistory } from "@/lib/donee-types";
 
-function toDonationDisplayItem(d: DonationHistory): DonationDisplayItem {
-  return {
-    id: d.id,
-    title: d.fundraisingActivityTitle,
-    donatedAt: d.donatedAt,
-    amount: parseFloat(d.amount),
-    imageUrl: null,
-    campaignId: d.fundraisingActivityId,
-  };
-}
+const DONATIONS_PAGE_SIZE = 10;
 
 function daysAgo(dateStr: string): string {
   const days = Math.floor(
@@ -31,128 +24,221 @@ function daysAgo(dateStr: string): string {
 }
 
 export default function DonationsPage() {
-  const { token } = useAuth();
+  const { token, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
 
-  const [donations, setDonations] = useState<DonationDisplayItem[]>([]);
+  const [donations, setDonations] = useState<DonationHistory[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(
+    searchQuery,
+    SEARCH_DEBOUNCE_MS,
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [donationsPage, setDonationsPage] = useState(0);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [isAuthLoading, token, router]);
 
   useEffect(() => {
     if (!token) return;
 
     let cancelled = false;
-    setIsLoading(true);
 
-    listMyDonations(token)
-      .then((data) => {
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setIsLoading(true);
+
+      const q = debouncedSearch.trim();
+      try {
+        const data =
+          q.length > 0
+            ? await searchMyDonations(token, q)
+            : await listMyDonations(token);
         if (cancelled) return;
-        if (data.length === 0) {
-          setDonations(DUMMY_DONATIONS);
-        } else {
-          setDonations(data.map(toDonationDisplayItem));
+        setDonations(data);
+        setDonationsPage(0);
+      } catch {
+        if (!cancelled) {
+          setDonations([]);
+          setDonationsPage(0);
         }
-      })
-      .catch(() => {
-        if (!cancelled) setDonations(DUMMY_DONATIONS);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, debouncedSearch]);
+
+  if (isAuthLoading || !token) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F3F3F3]">
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+      </main>
+    );
+  }
+
+  const donationsTotalPages = Math.max(
+    1,
+    Math.ceil(donations.length / DONATIONS_PAGE_SIZE),
+  );
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <DoneeNav pathname={pathname} />
-
-      <h1 className="mt-6 text-lg font-bold text-gray-900">Donation History</h1>
-
-      {/* Filter pills */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <FilterPill label="Filter" />
-        <FilterPill label="Category" hasDropdown />
-        <FilterPill label="All time" hasDropdown />
-      </div>
-
-      {/* Loading */}
-      {isLoading ? (
-        <div className="mt-12 flex justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2f7a55] border-t-transparent" />
+    <main className="min-h-screen bg-[#F3F3F3] px-4 py-8 text-[#08111F] sm:px-5">
+      <section className="mx-auto max-w-7xl rounded-[2rem] bg-white px-5 py-8 shadow-sm sm:px-8 md:px-10 lg:px-12">
+        <div className="border-b border-[#E1E5EA] pb-6">
+          <p className="text-sm font-medium text-[#40516E]">Donee</p>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-black">
+            Donation history
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#64748b]">
+            A record of your past contributions.
+          </p>
         </div>
-      ) : null}
 
-      {/* Empty state */}
-      {!isLoading && donations.length === 0 ? (
-        <div className="mt-12 text-center text-sm text-gray-500">No donations yet.</div>
-      ) : null}
-
-      {/* Donation list */}
-      {!isLoading && donations.length > 0 ? (
-        <div className="mt-6 space-y-3">
-          {donations.map((donation) => (
-            <DonationListCard key={donation.id} donation={donation} />
-          ))}
+        <div className="mt-6">
+          <DoneeNav pathname={pathname} />
         </div>
-      ) : null}
-    </div>
+
+        <div className="mt-6 max-w-xl">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#94a3b8]">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              placeholder="Search donations"
+              value={searchQuery}
+              onChange={(e) => {
+                setDonationsPage(0);
+                setSearchQuery(e.target.value);
+              }}
+              className="w-full rounded-full border border-[#D7DCE2] bg-[#f8fafc] py-3 pl-11 pr-4 text-sm text-[#0f172a] outline-none transition placeholder:text-[#94a3b8] focus:border-[#2F7A55] focus:bg-white focus:ring-2 focus:ring-[#2F7A55]/20"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="mt-16 flex justify-center">
+            <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
+          </div>
+        ) : null}
+
+        {!isLoading && donations.length === 0 ? (
+          <div className="mt-16 rounded-2xl border border-dashed border-[#D7DCE2] bg-[#fafafa] px-6 py-14 text-center">
+            <p className="text-base font-semibold text-[#334155]">
+              {searchQuery.trim()
+                ? `No donations match “${searchQuery.trim()}”.`
+                : "No donations yet."}
+            </p>
+          </div>
+        ) : null}
+
+        {!isLoading && donations.length > 0 ? (
+          <>
+            <div className="mt-8 space-y-3">
+              {donations
+                .slice(
+                  donationsPage * DONATIONS_PAGE_SIZE,
+                  donationsPage * DONATIONS_PAGE_SIZE + DONATIONS_PAGE_SIZE,
+                )
+                .map((donation) => (
+                  <DonationListCard key={donation.id} donation={donation} />
+                ))}
+            </div>
+            {donations.length > DONATIONS_PAGE_SIZE ? (
+              <nav
+                className="mt-10 flex flex-col gap-3 border-t border-[#E1E5EA] pt-8 sm:flex-row sm:items-center sm:justify-between"
+                aria-label="Donation history pagination"
+              >
+                <p className="text-sm text-[#40516E]">
+                  Page {donationsPage + 1} of {donationsTotalPages} ·{" "}
+                  {donations.length} donations
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={donationsPage <= 0}
+                    onClick={() => setDonationsPage((p) => Math.max(0, p - 1))}
+                    className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={donationsPage >= donationsTotalPages - 1}
+                    onClick={() => setDonationsPage((p) => p + 1)}
+                    className="rounded-full border border-[#D7DCE2] bg-white px-4 py-2 text-sm font-medium text-[#08111F] hover:border-[#2F7A55] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </nav>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    </main>
   );
 }
 
-function DonationListCard({ donation }: { donation: DonationDisplayItem }) {
+function DonationListCard({ donation }: { donation: DonationHistory }) {
+  const amountNum = Number.parseFloat(donation.amount);
+  const amountDisplay = Number.isFinite(amountNum)
+    ? amountNum.toLocaleString()
+    : donation.amount;
+
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      {/* Image */}
-      <div className="h-20 w-[120px] flex-shrink-0 overflow-hidden rounded-xl bg-gray-200">
-        {donation.imageUrl ? (
-          <img
-            src={donation.imageUrl}
-            alt={donation.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
-            <ImagePlaceholderIcon />
-          </div>
-        )}
+    <div className="flex items-center gap-4 rounded-[1.25rem] border border-[#E1E5EA] bg-white p-4 shadow-sm transition hover:border-[#2F7A55]/25">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#eaf5ef]">
+        <span className="text-lg font-extrabold text-[#2F7A55]" aria-hidden="true">
+          $
+        </span>
       </div>
 
-      {/* Content */}
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-bold text-gray-900">{donation.title}</h3>
-        <p className="mt-0.5 text-xs text-gray-500">Donated {daysAgo(donation.donatedAt)}</p>
+        <h3 className="truncate text-sm font-extrabold text-[#0f172a]">
+          {donation.fundraisingActivityTitle}
+        </h3>
+        <p className="mt-0.5 text-xs font-medium text-[#64748b]">
+          {daysAgo(donation.donatedAt)}
+        </p>
+        {donation.memo ? (
+          <p className="mt-0.5 truncate text-xs text-[#94a3b8]">{donation.memo}</p>
+        ) : null}
       </div>
 
-      {/* Amount */}
-      <span className="flex-shrink-0 text-sm font-bold text-gray-900">
-        ${donation.amount.toLocaleString()}
+      <span className="shrink-0 text-base font-extrabold text-[#0f172a]">
+        ${amountDisplay}
       </span>
     </div>
   );
 }
 
-function FilterPill({ label, hasDropdown }: { label: string; hasDropdown?: boolean }) {
+function SearchIcon() {
   return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="size-4"
+      aria-hidden="true"
     >
-      {label}
-      {hasDropdown ? (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4 text-gray-500">
-          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
-        </svg>
-      ) : null}
-    </button>
-  );
-}
-
-function ImagePlaceholderIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor" className="size-8 text-gray-400">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+      />
     </svg>
   );
 }

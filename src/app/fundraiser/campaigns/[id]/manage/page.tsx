@@ -1,19 +1,19 @@
 "use client";
-import { getDummyFundraisingActivityById } from "@/lib/fundraiser-demo-campaigns";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
+  getCompletedFundraisingActivities,
   getFundraisingActivityById,
   getMyFundraisingActivities,
+  listFundraiserFundraisingCategories,
+  suspendFundraisingActivity,
   updateFundraisingActivity,
 } from "@/lib/fundraiser-api";
-import type { FundraisingActivity } from "@/lib/fundraiser-types";
-import {
-  getFundraiserLocalExtra,
-  mergeFundraiserLocalExtra,
-  saveFundraiserLocalExtra,
-} from "@/lib/fundraiser-local-extra";
+import type {
+  FundraiserCategoryOption,
+  FundraisingActivity,
+} from "@/lib/fundraiser-types";
 
 export default function CampaignManagePage() {
   const params = useParams<{ id: string }>();
@@ -30,13 +30,65 @@ export default function CampaignManagePage() {
   const [description, setDescription] = useState("");
 
   const [isLoading, setIsLoading] = useState(true);
+  const [categoriesReady, setCategoriesReady] = useState(false);
+  const [categories, setCategories] = useState<FundraiserCategoryOption[]>([]);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /** Initial load when campaign is missing or request fails. */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    title?: string;
+    category?: string;
+    location?: string;
+    goalAmount?: string;
+    description?: string;
+    image?: string;
+  }>({});
+  const [formSubmitError, setFormSubmitError] = useState<string | null>(null);
+  const [suspendError, setSuspendError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const organiserName = useMemo(() => {
     return user?.fullName || user?.username || "Fundraiser";
   }, [user]);
+
+  const categoryOptions = useMemo(() => {
+    const list = [...categories];
+    if (category && !list.some((c) => c.name === category)) {
+      list.push({
+        id: `legacy:${category}`,
+        name: category,
+        description: null,
+      });
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories, category]);
+
+  useEffect(() => {
+    if (isAuthLoading || !token) return;
+    let cancelled = false;
+    void (async () => {
+      setCategoriesError(null);
+      try {
+        const rows = await listFundraiserFundraisingCategories(token);
+        if (!cancelled) setCategories(rows);
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setCategories([]);
+          setCategoriesError(
+            e instanceof Error
+              ? e.message
+              : "Could not load categories.",
+          );
+        }
+      } finally {
+        if (!cancelled) setCategoriesReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthLoading, token]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -50,46 +102,51 @@ export default function CampaignManagePage() {
 
     async function loadCampaign() {
       setIsLoading(true);
-      setError(null);
+      setLoadError(null);
 
       try {
-        let data = await getFundraisingActivityById(token, params.id);
-
-        if (!data) {
-            const allActivities = await getMyFundraisingActivities(token);
+        let data: FundraisingActivity | null = null;
+        try {
+          data = await getFundraisingActivityById(token, params.id);
+        } catch {
+          try {
+            const [activeRows, completedRows] = await Promise.all([
+              getMyFundraisingActivities(token),
+              getCompletedFundraisingActivities(token),
+            ]);
             data =
-                allActivities?.find(
-                    (activity) => String(activity.id) === String(params.id),
-                ) ?? null;
-        }
-
-        if (!data) {
-            data = getDummyFundraisingActivityById(params.id);
+              activeRows.find(
+                (activity) => String(activity.id) === String(params.id),
+              ) ??
+              completedRows.find(
+                (activity) => String(activity.id) === String(params.id),
+              ) ??
+              null;
+          } catch {
+            data = null;
+          }
         }
 
         if (cancelled) return;
 
         if (!data) {
           setCampaign(null);
-          setError("Campaign not found.");
+          setLoadError("Campaign not found.");
           return;
         }
 
-        const merged = mergeFundraiserLocalExtra(data);
-        const extra = getFundraiserLocalExtra(data.id);
-
-        setCampaign(merged);
-        setTitle(merged.title ?? "");
-        setCategory(extra.category ?? merged.category ?? "");
-        setLocation(extra.location ?? merged.location ?? "");
-        setGoalAmount(String(extra.goalAmount ?? merged.goalAmount ?? ""));
-        setImageUrl(extra.imageUrl ?? merged.imageUrl ?? "");
-        setDescription(merged.description ?? "");
+        setCampaign(data);
+        setTitle(data.title ?? "");
+        setCategory(data.category ?? "");
+        setLocation(data.location ?? "");
+        setGoalAmount(String(data.goalAmount ?? ""));
+        setImageUrl(data.imageUrl ?? "");
+        setDescription(data.description ?? "");
       } catch {
         if (cancelled) return;
 
         setCampaign(null);
-        setError("Failed to load campaign.");
+        setLoadError("Failed to load campaign.");
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -109,9 +166,14 @@ export default function CampaignManagePage() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("Please select a valid image file.");
+      setFieldErrors((e) => ({
+        ...e,
+        image: "Please select a valid image file.",
+      }));
       return;
     }
+
+    setFieldErrors((e) => ({ ...e, image: undefined }));
 
     const reader = new FileReader();
 
@@ -130,129 +192,103 @@ export default function CampaignManagePage() {
 
     if (!campaign) return;
 
-    setError(null);
     setSuccessMessage(null);
+    setFormSubmitError(null);
 
     const numericGoalAmount = Number(goalAmount);
 
-    if (!title.trim()) {
-      setError("Campaign title is required.");
-      return;
-    }
-
-    if (!category.trim()) {
-      setError("Category is required.");
-      return;
-    }
-
-    if (!location.trim()) {
-      setError("Location is required.");
-      return;
-    }
-
+    const next: typeof fieldErrors = {};
+    if (!title.trim()) next.title = "Campaign title is required.";
+    if (!category.trim()) next.category = "Please select a category.";
+    if (!location.trim()) next.location = "Location is required.";
     if (!numericGoalAmount || numericGoalAmount <= 0) {
-      setError("Target amount must be greater than 0.");
+      next.goalAmount = "Target amount must be greater than 0.";
+    }
+    if (!description.trim()) next.description = "Description is required.";
+    if (Object.keys(next).length > 0) {
+      setFieldErrors(next);
       return;
     }
 
-    if (!description.trim()) {
-      setError("Description is required.");
-      return;
-    }
-
+    setFieldErrors({});
     setIsSaving(true);
 
-    const isDummyCampaign = campaign.id.startsWith("dummy-");
-
-    const updated = isDummyCampaign
-    ? {
-        ...campaign,
+    try {
+      const updated = await updateFundraisingActivity(token, campaign.id, {
         title: title.trim(),
         description: description.trim(),
-        }
-    : await updateFundraisingActivity(token, campaign.id, {
-        title: title.trim(),
-        description: description.trim(),
-        });
-
-    setIsSaving(false);
-
-    if (!updated) {
-      setError("Failed to update campaign.");
-      return;
-    }
-
-    saveFundraiserLocalExtra(campaign.id, {
-      category: category.trim(),
-      location: location.trim(),
-      goalAmount: numericGoalAmount,
-      imageUrl: imageUrl.trim() || undefined,
-    });
-
-    const mergedUpdated = mergeFundraiserLocalExtra(updated);
-
-    setCampaign(mergedUpdated);
-    setTitle(updated.title ?? "");
-    setDescription(updated.description ?? "");
-    setSuccessMessage("Campaign updated successfully.");
-  }
-
-  function handleSuspendPlaceholder() {
-    if (!campaign) return;
-
-    const confirmed = window.confirm(
-        `Suspend "${campaign.title}"? This will move it to Suspended locally.`,
-    );
-
-    if (!confirmed) return;
-
-    saveFundraiserLocalExtra(campaign.id, {
-        status: "Suspended",
         category: category.trim(),
         location: location.trim(),
-        goalAmount: Number(goalAmount) || 0,
-        imageUrl: imageUrl.trim() || undefined,
-    });
+        goalAmount: numericGoalAmount,
+        currentAmount: campaign.currentAmount,
+        imageUrl: imageUrl.trim() ? imageUrl.trim() : null,
+      });
 
-    setCampaign((currentCampaign) =>
-        currentCampaign
-        ? {
-            ...currentCampaign,
-            status: "Suspended",
-            }
-        : currentCampaign,
-    );
-
-    setSuccessMessage("Campaign suspended locally.");
-    setError(null);
+      setCampaign(updated);
+      setTitle(updated.title ?? "");
+      setCategory(updated.category ?? "");
+      setLocation(updated.location ?? "");
+      setGoalAmount(String(updated.goalAmount ?? ""));
+      setImageUrl(updated.imageUrl ?? "");
+      setDescription(updated.description ?? "");
+      setSuccessMessage("Campaign updated successfully.");
+    } catch (e: unknown) {
+      setFormSubmitError(
+        e instanceof Error ? e.message : "Failed to update campaign.",
+      );
+    } finally {
+      setIsSaving(false);
     }
+  }
+
+  async function handleSuspendCampaign() {
+    if (!campaign || !token) return;
+
+    setSuspendError(null);
+
+    const confirmed = window.confirm(
+      `Suspend "${campaign.title}"? This removes it from active lists.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await suspendFundraisingActivity(token, campaign.id);
+      setSuspendError(null);
+      setSuccessMessage("Campaign suspended.");
+      router.push("/fundraiser");
+    } catch (e: unknown) {
+      setSuspendError(
+        e instanceof Error ? e.message : "Failed to suspend campaign.",
+      );
+    }
+  }
 
   const currentAmount = campaign?.currentAmount ?? 0;
   const numericGoal = Number(goalAmount) || 0;
   const progress =
     numericGoal > 0 ? Math.min((currentAmount / numericGoal) * 100, 100) : 0;
 
-  if (isAuthLoading || isLoading) {
+  if (isAuthLoading || isLoading || !categoriesReady) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f3f3f3]">
-        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2f865b] border-t-transparent" />
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
       </main>
     );
   }
 
-  if (error && !campaign) {
+  if (loadError && !campaign) {
     return (
       <main className="min-h-screen bg-[#f3f3f3] px-5 py-8 text-[#0f172a]">
         <section className="mx-auto max-w-5xl rounded-[2rem] bg-white px-8 py-10 shadow-sm">
           <button
             type="button"
             onClick={() => router.push("/fundraiser")}
-            className="text-sm font-medium text-[#2f865b] hover:text-[#26704c]"
+            className="text-sm font-medium text-[#2F7A55] hover:text-[#2F7A55]"
           >
             ← Back
           </button>
 
-          <h1 className="mt-8 text-2xl font-extrabold text-black">{error}</h1>
+          <h1 className="mt-8 text-2xl font-extrabold text-black">{loadError}</h1>
         </section>
       </main>
     );
@@ -266,7 +302,7 @@ export default function CampaignManagePage() {
         <button
           type="button"
           onClick={() => router.push("/fundraiser")}
-          className="text-sm font-medium text-[#64748b] transition hover:text-[#2f865b]"
+          className="text-sm font-medium text-[#64748b] transition hover:text-[#2F7A55]"
         >
           ← Back to dashboard
         </button>
@@ -290,21 +326,21 @@ export default function CampaignManagePage() {
           <button
             type="button"
             onClick={() => router.push(`/fundraiser/campaigns/${campaign.id}`)}
-            className="rounded-full border border-[#d7d7d7] bg-white px-6 py-2 text-sm font-semibold text-[#0f172a] transition hover:border-[#2f865b] hover:text-[#2f865b]"
+            className="rounded-full border border-[#d7d7d7] bg-white px-6 py-2 text-sm font-semibold text-[#0f172a] transition hover:border-[#2F7A55] hover:text-[#2F7A55]"
           >
             View Page
           </button>
         </div>
 
-        {error ? (
-          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-            {error}
+        {successMessage ? (
+          <div className="mt-6 rounded-2xl border border-[#b8dfc9] bg-[#eaf5ef] px-5 py-4 text-sm text-[#2F7A55]">
+            {successMessage}
           </div>
         ) : null}
 
-        {successMessage ? (
-          <div className="mt-6 rounded-2xl border border-[#b8dfc9] bg-[#eaf5ef] px-5 py-4 text-sm text-[#2f865b]">
-            {successMessage}
+        {categoriesError ? (
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            {categoriesError}
           </div>
         ) : null}
 
@@ -318,50 +354,73 @@ export default function CampaignManagePage() {
             </h2>
 
             <div className="mt-6 grid gap-5 md:grid-cols-2">
-              <Field label="Campaign Title">
+              <Field label="Campaign Title" error={fieldErrors.title}>
                 <input
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
+                  onChange={(event) => {
+                    setFieldErrors((e) => ({ ...e, title: undefined }));
+                    setTitle(event.target.value);
+                  }}
                   placeholder="Enter campaign title"
-                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2f865b] focus:ring-2 focus:ring-[#2f865b]/20"
+                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
                 />
               </Field>
 
-              <Field label="Category">
-                <input
+              <Field label="Category" error={fieldErrors.category}>
+                <select
                   value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                  placeholder="Example: Medical, Education, Community"
-                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2f865b] focus:ring-2 focus:ring-[#2f865b]/20"
-                />
+                  onChange={(event) => {
+                    setFieldErrors((e) => ({ ...e, category: undefined }));
+                    setCategory(event.target.value);
+                  }}
+                  disabled={categoryOptions.length === 0}
+                  className="w-full rounded-2xl border border-[#d7d7d7] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20 disabled:cursor-not-allowed disabled:bg-[#f1f5f9] disabled:text-[#94a3b8]"
+                >
+                  <option value="">
+                    {categoryOptions.length === 0
+                      ? "No categories available"
+                      : "Select a category"}
+                  </option>
+                  {categoryOptions.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
 
-              <Field label="Location">
+              <Field label="Location" error={fieldErrors.location}>
                 <input
                   value={location}
-                  onChange={(event) => setLocation(event.target.value)}
+                  onChange={(event) => {
+                    setFieldErrors((e) => ({ ...e, location: undefined }));
+                    setLocation(event.target.value);
+                  }}
                   placeholder="Example: Singapore"
-                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2f865b] focus:ring-2 focus:ring-[#2f865b]/20"
+                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
                 />
               </Field>
 
-              <Field label="Target Amount">
+              <Field label="Target Amount" error={fieldErrors.goalAmount}>
                 <input
                   type="number"
                   min="1"
                   value={goalAmount}
-                  onChange={(event) => setGoalAmount(event.target.value)}
+                  onChange={(event) => {
+                    setFieldErrors((e) => ({ ...e, goalAmount: undefined }));
+                    setGoalAmount(event.target.value);
+                  }}
                   placeholder="Enter target amount"
-                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2f865b] focus:ring-2 focus:ring-[#2f865b]/20"
+                  className="w-full rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
                 />
               </Field>
 
-              <Field label="Campaign Image" className="md:col-span-2">
+              <Field label="Campaign Image" className="md:col-span-2" error={fieldErrors.image}>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleLocalImageChange}
-                  className="w-full rounded-2xl border border-[#d7d7d7] bg-white px-4 py-3 text-sm outline-none transition file:mr-4 file:rounded-full file:border-0 file:bg-[#2f865b] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#26704c]"
+                  className="w-full rounded-2xl border border-[#d7d7d7] bg-white px-4 py-3 text-sm outline-none transition file:mr-4 file:rounded-full file:border-0 file:bg-[#2F7A55] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:brightness-95"
                 />
               </Field>
             </div>
@@ -409,21 +468,33 @@ export default function CampaignManagePage() {
               </div>
             </div>
 
-            <Field label="Description" className="mt-5">
+            <Field label="Description" className="mt-5" error={fieldErrors.description}>
               <textarea
                 value={description}
-                onChange={(event) => setDescription(event.target.value)}
+                onChange={(event) => {
+                  setFieldErrors((e) => ({ ...e, description: undefined }));
+                  setDescription(event.target.value);
+                }}
                 placeholder="Write the campaign story and explain why support is needed."
                 rows={10}
-                className="w-full resize-none rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#2f865b] focus:ring-2 focus:ring-[#2f865b]/20"
+                className="w-full resize-none rounded-2xl border border-[#d7d7d7] px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
               />
             </Field>
+
+            {formSubmitError ? (
+              <div
+                className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                role="alert"
+              >
+                {formSubmitError}
+              </div>
+            ) : null}
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => router.push("/fundraiser")}
-                className="rounded-full border border-[#d7d7d7] bg-white px-7 py-3 text-sm font-semibold text-[#0f172a] transition hover:border-[#2f865b] hover:text-[#2f865b]"
+                className="rounded-full border border-[#d7d7d7] bg-white px-7 py-3 text-sm font-semibold text-[#0f172a] transition hover:border-[#2F7A55] hover:text-[#2F7A55]"
               >
                 Cancel
               </button>
@@ -431,7 +502,7 @@ export default function CampaignManagePage() {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="rounded-full bg-[#2f865b] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#26704c] disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-[#2F7A55] px-7 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSaving ? "Saving..." : "Save Changes"}
               </button>
@@ -451,7 +522,7 @@ export default function CampaignManagePage() {
             </section>
 
             <section className="rounded-3xl border border-[#e5e7eb] bg-[#eaf5ef] p-6">
-              <h2 className="text-lg font-extrabold text-[#2f865b]">
+              <h2 className="text-lg font-extrabold text-[#2F7A55]">
                 Current Status
               </h2>
 
@@ -467,12 +538,18 @@ export default function CampaignManagePage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-[#7f5f5f]">
-                This will mark the campaign as suspended locally.
+                The campaign will no longer appear in public lists.
               </p>
+
+              {suspendError ? (
+                <p className="mt-3 text-sm text-red-600" role="alert">
+                  {suspendError}
+                </p>
+              ) : null}
 
               <button
                 type="button"
-                onClick={handleSuspendPlaceholder}
+                onClick={() => void handleSuspendCampaign()}
                 className="mt-5 w-full rounded-full bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
               >
                 Suspend Campaign
@@ -489,10 +566,12 @@ function Field({
   label,
   children,
   className = "",
+  error,
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  error?: string;
 }) {
   return (
     <label className={`block ${className}`}>
@@ -500,6 +579,11 @@ function Field({
         {label}
       </span>
       {children}
+      {error ? (
+        <p className="mt-1.5 text-sm text-red-600" role="alert">
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }
@@ -513,7 +597,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-2xl bg-[#f6f7f6] px-4 py-4">
-      <p className="text-xl font-extrabold text-[#2f865b]">{value}</p>
+      <p className="text-xl font-extrabold text-[#2F7A55]">{value}</p>
       <p className="mt-1 text-xs font-medium text-[#647067]">{label}</p>
     </div>
   );

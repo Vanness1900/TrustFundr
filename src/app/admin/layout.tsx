@@ -1,11 +1,10 @@
-// src/app/platform-manager/layout.tsx
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
-export default function PlatformManagerLayout({
+export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -21,20 +20,20 @@ export default function PlatformManagerLayout({
       return;
     }
 
-    if (user.role !== "Platform Manager") {
+    if (user.role !== "Admin") {
       const redirectPath =
-        user.role === "Admin"
-          ? "/admin"
-          : user.role === "Fund Raiser"
-            ? "/fundraiser"
-            : user.role === "Donee"
-              ? "/donee"
+        user.role === "Fund Raiser"
+          ? "/fundraiser"
+          : user.role === "Donee"
+            ? "/donee"
+            : user.role === "Platform Manager"
+              ? "/platform-manager"
               : "/login";
       router.replace(redirectPath);
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || !user || user.role !== "Platform Manager") {
+  if (isLoading || !user || user.role !== "Admin") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
@@ -42,12 +41,12 @@ export default function PlatformManagerLayout({
     );
   }
 
-  const initial = user.fullName.charAt(0).toUpperCase();
-
   async function handleLogout() {
     await logout();
     router.push("/login");
   }
+
+  const initial = user.fullName.charAt(0).toUpperCase();
 
   return (
     <main className="min-h-screen bg-white">
@@ -58,7 +57,8 @@ export default function PlatformManagerLayout({
           </span>
           <div className="flex items-center gap-3">
             <button
-              onClick={handleLogout}
+              type="button"
+              onClick={() => void handleLogout()}
               className="rounded-full border border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Sign Out

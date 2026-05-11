@@ -27,7 +27,7 @@ export default function FundraiserLayout({
           ? "/admin"
           : user.role === "Donee"
             ? "/donee"
-            : user.role === "Platform Management"
+            : user.role === "Platform Manager"
               ? "/platform-manager"
               : "/login";
       router.replace(redirectPath);
@@ -37,7 +37,7 @@ export default function FundraiserLayout({
   if (isLoading || !user || user.role !== "Fund Raiser") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#16a34a] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#2F7A55] border-t-transparent" />
       </main>
     );
   }
@@ -53,7 +53,7 @@ export default function FundraiserLayout({
     <main className="min-h-screen bg-white">
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-extrabold tracking-tight text-[#18543E]">
+          <span className="text-lg font-extrabold tracking-tight text-[#2F7A55]">
             TrustFundr
           </span>
           <div className="flex items-center gap-3">
@@ -64,7 +64,7 @@ export default function FundraiserLayout({
               Sign Out
             </button>
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#18543E] text-sm font-extrabold text-white"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2F7A55] text-sm font-extrabold text-white"
               aria-label={`${user.fullName} avatar`}
               title={user.fullName}
             >

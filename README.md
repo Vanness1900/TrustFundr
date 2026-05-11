@@ -21,6 +21,32 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## End-to-end tests (Playwright)
+
+Login flows are covered with [Playwright](https://playwright.dev/). Specs live under [`tests/`](tests/); API stubs for login are in [`tests/mocks/`](tests/mocks/). Generated artifacts go to `tests/test-results/` and `tests/playwright-report/` (both gitignored). Tests start the app with `next build` and `next start`, and **stub** requests to `**/api/auth/login` so you do not need the real backend on port 8080.
+
+One-time browser install (after `npm install`):
+
+```bash
+npm run playwright:install
+```
+
+This project’s scripts clear `PLAYWRIGHT_BROWSERS_PATH` for the install and test commands so Playwright uses the default cache under your user profile (some tools set `PLAYWRIGHT_BROWSERS_PATH` to a shared cache with the wrong OS architecture, which breaks browser launch). On Windows, run `set PLAYWRIGHT_BROWSERS_PATH=` in the same terminal, then `npx playwright install chromium`.
+
+Run tests (the dev server is started automatically):
+
+```bash
+npm run test:e2e
+```
+
+Debug in UI mode:
+
+```bash
+npm run test:e2e:ui
+```
+
+After a run, open the HTML report with `npx playwright show-report tests/playwright-report` if needed (or open `tests/playwright-report/index.html` in a browser).
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
