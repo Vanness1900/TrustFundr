@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { listMyDonations, searchMyDonations } from "@/lib/donee-api";
@@ -15,10 +16,12 @@ import type { DonationHistory } from "@/lib/donee-types";
 const DONATIONS_PAGE_SIZE = 10;
 
 function daysAgo(dateStr: string): string {
-  const days = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (days === 0) return "Today";
+  if (!dateStr?.trim()) return "—";
+  const t = new Date(dateStr).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const days = Math.floor((Date.now() - t) / (1000 * 60 * 60 * 24));
+  if (!Number.isFinite(days)) return "—";
+  if (days <= 0) return "Today";
   if (days === 1) return "1 day ago";
   return `${days} days ago`;
 }
@@ -195,19 +198,40 @@ function DonationListCard({ donation }: { donation: DonationHistory }) {
   const amountDisplay = Number.isFinite(amountNum)
     ? amountNum.toLocaleString()
     : donation.amount;
+  const thumb = donation.fundraisingActivityImageUrl?.trim();
+  const campaignId = (donation.fundraisingActivityId ?? "").trim();
+  const title = donation.fundraisingActivityTitle || "Campaign";
+  const href =
+    campaignId.length > 0
+      ? `/donee/campaigns/${encodeURIComponent(campaignId)}`
+      : null;
 
-  return (
-    <div className="flex items-center gap-4 rounded-[1.25rem] border border-[#E1E5EA] bg-white p-4 shadow-sm transition hover:border-[#2F7A55]/25">
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#eaf5ef]">
-        <span className="text-lg font-extrabold text-[#2F7A55]" aria-hidden="true">
-          $
-        </span>
+  const rowClass =
+    "flex items-center gap-4 rounded-[1.25rem] border border-[#E1E5EA] bg-white p-4 shadow-sm transition hover:border-[#2F7A55]/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2F7A55]";
+
+  const body = (
+    <>
+      <div className="relative flex h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-[#eaf5ef] ring-1 ring-[#E1E5EA]/80">
+        {thumb ? (
+          <img
+            src={thumb}
+            alt={title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <span
+            className="flex h-full w-full items-center justify-center text-lg font-extrabold text-[#2F7A55]"
+            aria-hidden="true"
+          >
+            $
+          </span>
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-extrabold text-[#0f172a]">
-          {donation.fundraisingActivityTitle}
-        </h3>
+        <h3 className="truncate text-sm font-extrabold text-[#0f172a]">{title}</h3>
         <p className="mt-0.5 text-xs font-medium text-[#64748b]">
           {daysAgo(donation.donatedAt)}
         </p>
@@ -219,8 +243,22 @@ function DonationListCard({ donation }: { donation: DonationHistory }) {
       <span className="shrink-0 text-base font-extrabold text-[#0f172a]">
         ${amountDisplay}
       </span>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={`${rowClass} cursor-pointer no-underline`}
+        aria-label={`View campaign: ${title}`}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className={rowClass}>{body}</div>;
 }
 
 function SearchIcon() {

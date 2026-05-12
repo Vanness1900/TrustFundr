@@ -44,7 +44,10 @@ export interface DonationHistory {
   memo: string | null;
   fundraisingActivityId: string;
   fundraisingActivityTitle: string;
+  /** ISO timestamp of the donation (from backend `createdAt`). */
   donatedAt: string;
+  /** Campaign hero image when the API nested summary includes `imageUrl`. */
+  fundraisingActivityImageUrl?: string | null;
 }
 
 export type ApiError = { message: string };

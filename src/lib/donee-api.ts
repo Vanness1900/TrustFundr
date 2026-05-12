@@ -228,6 +228,56 @@ export async function saveFavourite(
 
 // --- Donation history ---
 
+/** Backend returns nested `fundraisingActivity` and `createdAt` on the donation row. */
+function mapDonationHistoryRow(raw: unknown): DonationHistory {
+  const r = raw as Record<string, unknown>;
+  const nested =
+    r.fundraisingActivity && typeof r.fundraisingActivity === "object"
+      ? (r.fundraisingActivity as Record<string, unknown>)
+      : undefined;
+
+  const donatedRaw = r.donatedAt ?? r.createdAt;
+  let donatedAt = "";
+  if (typeof donatedRaw === "string") donatedAt = donatedRaw;
+  else if (typeof donatedRaw === "number" && Number.isFinite(donatedRaw))
+    donatedAt = new Date(donatedRaw).toISOString();
+
+  const amountRaw = r.amount;
+  const amount =
+    typeof amountRaw === "number"
+      ? String(amountRaw)
+      : typeof amountRaw === "string"
+        ? amountRaw
+        : "";
+
+  const title =
+    (nested && typeof nested.title === "string" && nested.title) ||
+    (typeof r.fundraisingActivityTitle === "string" && r.fundraisingActivityTitle) ||
+    "Campaign";
+
+  const fundId =
+    (nested && nested.id != null && String(nested.id)) ||
+    (typeof r.fundraisingActivityId === "string" && r.fundraisingActivityId) ||
+    "";
+
+  const img =
+    nested && typeof nested.imageUrl === "string" && nested.imageUrl.trim()
+      ? nested.imageUrl.trim()
+      : typeof r.imageUrl === "string" && r.imageUrl.trim()
+        ? r.imageUrl.trim()
+        : null;
+
+  return {
+    id: String(r.id ?? ""),
+    amount,
+    memo: typeof r.memo === "string" ? r.memo : null,
+    fundraisingActivityId: fundId,
+    fundraisingActivityTitle: title,
+    donatedAt,
+    fundraisingActivityImageUrl: img,
+  };
+}
+
 export async function listMyDonations(
   token: string | null,
 ): Promise<DonationHistory[]> {
@@ -238,10 +288,11 @@ export async function listMyDonations(
       headers: getHeaders(token),
     },
   );
-  return parseOrThrow<DonationHistory[]>(
-    res,
-    "Failed to load donations.",
-  );
+  const json = await parseOrThrow<unknown>(res, "Failed to load donations.");
+  if (!Array.isArray(json)) return [];
+  return json
+    .map((row) => mapDonationHistoryRow(row))
+    .filter((row) => row.id);
 }
 
 export async function searchMyDonations(
@@ -257,8 +308,9 @@ export async function searchMyDonations(
     method: "GET",
     headers: getHeaders(token),
   });
-  return parseOrThrow<DonationHistory[]>(
-    res,
-    "Failed to search donations.",
-  );
+  const json = await parseOrThrow<unknown>(res, "Failed to search donations.");
+  if (!Array.isArray(json)) return [];
+  return json
+    .map((row) => mapDonationHistoryRow(row))
+    .filter((row) => row.id);
 }
