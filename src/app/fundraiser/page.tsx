@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
-  getCompletedFundraisingActivities,
   getMyFundraisingActivities,
-  searchCompletedFundraisingActivities,
   searchMyFundraisingActivities,
   suspendFundraisingActivity,
 } from "@/lib/fundraiser-api";
@@ -21,22 +19,6 @@ type ScopeFilter = "All" | "Active" | "Completed";
 const scopeFilters: ScopeFilter[] = ["All", "Active", "Completed"];
 
 const DASH_PAGE_SIZE = 8;
-
-function mergeActivitiesById(
-  lists: FundraisingActivity[][],
-): FundraisingActivity[] {
-  const seen = new Set<string>();
-  const out: FundraisingActivity[] = [];
-  for (const list of lists) {
-    for (const activity of list) {
-      const id = String(activity.id);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      out.push(activity);
-    }
-  }
-  return out;
-}
 
 function getProgress(activity: FundraisingActivity) {
   const goal = activity.goalAmount ?? 0;
@@ -87,13 +69,12 @@ export default function FundraiserDashboardPage() {
     const q = debouncedSearch.trim();
 
     try {
-      const [activeSnap, completedSnap] = await Promise.all([
-        getMyFundraisingActivities(token),
-        getCompletedFundraisingActivities(token),
-      ]);
+      const allSnap = await getMyFundraisingActivities(token, "all");
+      const statsActive = allSnap.filter((a) => a.status !== "Completed");
+      const statsCompleted = allSnap.filter((a) => a.status === "Completed");
 
-      setStatsActive(activeSnap);
-      setStatsCompleted(completedSnap);
+      setStatsActive(statsActive);
+      setStatsCompleted(statsCompleted);
 
       let rows: FundraisingActivity[] = [];
 
@@ -101,25 +82,21 @@ export default function FundraiserDashboardPage() {
 
       if (scope === "Completed") {
         if (hasSearch) {
-          rows = await searchCompletedFundraisingActivities(token, q);
+          rows = await searchMyFundraisingActivities(token, q, "completed");
         } else {
-          rows = completedSnap;
+          rows = statsCompleted;
         }
       } else if (scope === "Active") {
         if (hasSearch) {
-          rows = await searchMyFundraisingActivities(token, q);
+          rows = await searchMyFundraisingActivities(token, q, "active");
         } else {
-          rows = activeSnap;
+          rows = statsActive;
         }
       } else {
         if (hasSearch) {
-          const [a, b] = await Promise.all([
-            searchMyFundraisingActivities(token, q),
-            searchCompletedFundraisingActivities(token, q),
-          ]);
-          rows = mergeActivitiesById([a, b]);
+          rows = await searchMyFundraisingActivities(token, q, "all");
         } else {
-          rows = mergeActivitiesById([activeSnap, completedSnap]);
+          rows = allSnap;
         }
       }
 

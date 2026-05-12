@@ -105,17 +105,25 @@ function normalizeActivityList(raw: unknown): FundraisingActivity[] {
     .filter((activity: FundraisingActivity) => activity.id);
 }
 
-/** Active (non-completed) fundraisers for the authenticated account. */
+/** List/search scope: all (default), active only, or completed only. */
+export type FundraiserMyActivitiesStatus = "all" | "active" | "completed";
+
+/**
+ * Lists the authenticated fundraiser's activities.
+ * Default `status` is `"all"` (active first, then completed). Use `"active"` or `"completed"` to filter.
+ */
 export async function getMyFundraisingActivities(
   token?: string | null,
+  status: FundraiserMyActivitiesStatus = "all",
 ): Promise<FundraisingActivity[]> {
-  const response = await fetch(
+  const url = new URL(
     `${API_BASE_URL}/api/fundraiser/fundraising-activities/view-my-fundraising-activities`,
-    {
-      method: "GET",
-      headers: getHeaders(token),
-    },
   );
+  url.searchParams.set("status", status);
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: getHeaders(token),
+  });
   const raw = await parseOrThrow<unknown>(
     response,
     "Failed to load your fundraising activities.",
@@ -126,15 +134,7 @@ export async function getMyFundraisingActivities(
 export async function getCompletedFundraisingActivities(
   token?: string | null,
 ): Promise<FundraisingActivity[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/fundraiser/fundraising-activities/view-completed-fundraising-activities`,
-    { method: "GET", headers: getHeaders(token) },
-  );
-  const raw = await parseOrThrow<unknown>(
-    response,
-    "Failed to load completed fundraising activities.",
-  );
-  return normalizeActivityList(raw);
+  return getMyFundraisingActivities(token, "completed");
 }
 
 function mapCategoryRow(raw: Record<string, unknown>): FundraiserCategoryOption {
@@ -164,16 +164,19 @@ export async function listFundraiserFundraisingCategories(
 }
 
 /**
- * Backend requires non-empty `q`. Call only when trimmed query length ≥ 1.
+ * Search the authenticated fundraiser's campaigns. Requires non-empty `q`.
+ * Default `status` is `"all"` (active matches first, then completed). Use `"active"` or `"completed"` to narrow.
  */
 export async function searchMyFundraisingActivities(
   token: string | null | undefined,
   q: string,
+  status: FundraiserMyActivitiesStatus = "all",
 ): Promise<FundraisingActivity[]> {
   const url = new URL(
     `${API_BASE_URL}/api/fundraiser/fundraising-activities/search-fundraising-activities`,
   );
   url.searchParams.set("q", q.trim());
+  url.searchParams.set("status", status);
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: getHeaders(token),
@@ -189,19 +192,7 @@ export async function searchCompletedFundraisingActivities(
   token: string | null | undefined,
   q: string,
 ): Promise<FundraisingActivity[]> {
-  const url = new URL(
-    `${API_BASE_URL}/api/fundraiser/fundraising-activities/search-completed-fundraising-activities`,
-  );
-  url.searchParams.set("q", q.trim());
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: getHeaders(token),
-  });
-  const raw = await parseOrThrow<unknown>(
-    response,
-    "Failed to search completed fundraising activities.",
-  );
-  return normalizeActivityList(raw);
+  return searchMyFundraisingActivities(token, q, "completed");
 }
 
 export async function getFundraisingActivityById(

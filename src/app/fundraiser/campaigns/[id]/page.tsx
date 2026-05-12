@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
-  getCompletedFundraisingActivities,
   getFundraisingActivityById,
   getMyFundraisingActivities,
 } from "@/lib/fundraiser-api";
@@ -42,18 +41,11 @@ export default function CampaignViewPage() {
           data = await getFundraisingActivityById(token, params.id);
         } catch {
           try {
-            const [activeRows, completedRows] = await Promise.all([
-              getMyFundraisingActivities(token),
-              getCompletedFundraisingActivities(token),
-            ]);
+            const allRows = await getMyFundraisingActivities(token, "all");
             data =
-              activeRows.find(
+              allRows.find(
                 (activity) => String(activity.id) === String(params.id),
-              ) ??
-              completedRows.find(
-                (activity) => String(activity.id) === String(params.id),
-              ) ??
-              null;
+              ) ?? null;
           } catch {
             data = null;
           }

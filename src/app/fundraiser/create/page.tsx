@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
   createFundraisingActivity,
-  getCompletedFundraisingActivities,
   getFundraisingActivityById,
   getMyFundraisingActivities,
   listFundraiserFundraisingCategories,
@@ -91,14 +90,9 @@ export default function CreateCampaignPage() {
         campaign = await getFundraisingActivityById(token, id);
       } catch {
         try {
-          const [activeRows, completedRows] = await Promise.all([
-            getMyFundraisingActivities(token),
-            getCompletedFundraisingActivities(token),
-          ]);
+          const allRows = await getMyFundraisingActivities(token, "all");
           campaign =
-            activeRows.find((item) => String(item.id) === String(id)) ??
-            completedRows.find((item) => String(item.id) === String(id)) ??
-            null;
+            allRows.find((item) => String(item.id) === String(id)) ?? null;
         } catch {
           campaign = null;
         }
