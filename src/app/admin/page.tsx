@@ -509,19 +509,25 @@ function SelectInput({
   value,
   onChange,
   options,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  disabled?: boolean;
 }) {
   return (
     <select
       value={value}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20"
+      className={[
+        "w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20",
+        disabled ? "cursor-not-allowed bg-gray-100 text-gray-500" : "",
+      ].join(" ")}
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value || "__empty"} value={o.value}>
           {o.label}
         </option>
       ))}
@@ -667,11 +673,48 @@ export default function AdminPage() {
   }));
   const [accountPassword, setAccountPassword] = useState("");
 
+  /** Full profile list for the account modal only (table search must not empty this dropdown). */
+  const [accountModalProfiles, setAccountModalProfiles] = useState<
+    UserProfileRow[]
+  >([]);
+  const [isLoadingAccountModalProfiles, setIsLoadingAccountModalProfiles] =
+    useState(false);
+  const [accountModalProfilesError, setAccountModalProfilesError] = useState<
+    string | null
+  >(null);
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (!openAccountModal || !token) return;
+    let cancelled = false;
+    setIsLoadingAccountModalProfiles(true);
+    setAccountModalProfilesError(null);
+    void listUserProfiles(token)
+      .then((rows) => {
+        if (!cancelled) setAccountModalProfiles(rows);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setAccountModalProfiles([]);
+          setAccountModalProfilesError(
+            e instanceof Error
+              ? e.message
+              : "Failed to load profiles for this form.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAccountModalProfiles(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openAccountModal, token]);
 
   useEffect(() => {
     if (isLoading || !user || !token) return;
@@ -1089,7 +1132,7 @@ export default function AdminPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             if (!token) return;
-            const selectedProfile = userProfiles.find(
+            const selectedProfile = accountModalProfiles.find(
               (p) => p.id === accountDraft.userProfileId,
             );
             const nextAccountErrors: typeof accountFieldErrors = {};
@@ -1194,24 +1237,34 @@ export default function AdminPage() {
               />
             </Field>
             <Field label="User Profile" error={accountFieldErrors.userProfileId}>
+              {accountModalProfilesError ? (
+                <p className="mb-2 text-sm text-red-600">{accountModalProfilesError}</p>
+              ) : null}
               <SelectInput
                 value={accountDraft.userProfileId}
+                disabled={isLoadingAccountModalProfiles || Boolean(accountModalProfilesError)}
                 onChange={(v) => {
                   setAccountFieldErrors((e) => ({ ...e, userProfileId: undefined }));
-                  const p = userProfiles.find((x) => x.id === v);
+                  const p = accountModalProfiles.find((x) => x.id === v);
                   setAccountDraft((a) => ({
                     ...a,
                     userProfileId: v,
                     userProfileName: p?.name || a.userProfileName,
                   }));
                 }}
-                options={[
-                  { value: "", label: "Select profile" },
-                  ...userProfiles
-                    .slice()
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((p) => ({ value: p.id, label: p.name })),
-                ]}
+                options={
+                  isLoadingAccountModalProfiles
+                    ? [{ value: "", label: "Loading profiles…" }]
+                    : accountModalProfilesError
+                      ? [{ value: "", label: "—" }]
+                      : [
+                          { value: "", label: "Select profile" },
+                          ...accountModalProfiles
+                            .slice()
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((p) => ({ value: p.id, label: p.name })),
+                        ]
+                }
               />
             </Field>
             <Field
