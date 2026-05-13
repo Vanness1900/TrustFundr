@@ -22,7 +22,7 @@ export default function CampaignManagePage() {
   const [campaign, setCampaign] = useState<FundraisingActivity | null>(null);
 
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [location, setLocation] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -52,16 +52,20 @@ export default function CampaignManagePage() {
   }, [user]);
 
   const categoryOptions = useMemo(() => {
-    const list = [...categories];
-    if (category && !list.some((c) => c.name === category)) {
+    const list = [...categories].sort((a, b) => a.name.localeCompare(b.name));
+    if (
+      categoryId &&
+      !list.some((c) => c.id === categoryId) &&
+      (campaign?.category ?? "").trim()
+    ) {
       list.push({
-        id: `legacy:${category}`,
-        name: category,
+        id: categoryId,
+        name: campaign!.category!.trim(),
         description: null,
       });
     }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [categories, category]);
+    return list;
+  }, [categories, categoryId, campaign?.category]);
 
   useEffect(() => {
     if (isAuthLoading || !token) return;
@@ -129,7 +133,12 @@ export default function CampaignManagePage() {
 
         setCampaign(data);
         setTitle(data.title ?? "");
-        setCategory(data.category ?? "");
+        const resolvedCategoryId =
+          (data.categoryId?.trim() ?? "") ||
+          categories.find((c) => c.name === (data.category ?? "").trim())
+            ?.id ||
+          "";
+        setCategoryId(resolvedCategoryId);
         setLocation(data.location ?? "");
         setGoalAmount(String(data.goalAmount ?? ""));
         setImageUrl(data.imageUrl ?? "");
@@ -151,7 +160,7 @@ export default function CampaignManagePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthLoading, params.id, router, token]);
+  }, [isAuthLoading, params.id, router, token, categories]);
 
   function handleLocalImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -191,7 +200,7 @@ export default function CampaignManagePage() {
 
     const next: typeof fieldErrors = {};
     if (!title.trim()) next.title = "Campaign title is required.";
-    if (!category.trim()) next.category = "Please select a category.";
+    if (!categoryId.trim()) next.category = "Please select a category.";
     if (!location.trim()) next.location = "Location is required.";
     if (!numericGoalAmount || numericGoalAmount <= 0) {
       next.goalAmount = "Target amount must be greater than 0.";
@@ -209,7 +218,7 @@ export default function CampaignManagePage() {
       const updated = await updateFundraisingActivity(token, campaign.id, {
         title: title.trim(),
         description: description.trim(),
-        category: category.trim(),
+        categoryId: categoryId.trim(),
         location: location.trim(),
         goalAmount: numericGoalAmount,
         currentAmount: campaign.currentAmount,
@@ -218,7 +227,12 @@ export default function CampaignManagePage() {
 
       setCampaign(updated);
       setTitle(updated.title ?? "");
-      setCategory(updated.category ?? "");
+      const nextCatId =
+        (updated.categoryId?.trim() ?? "") ||
+        categories.find((c) => c.name === (updated.category ?? "").trim())
+          ?.id ||
+        "";
+      setCategoryId(nextCatId);
       setLocation(updated.location ?? "");
       setGoalAmount(String(updated.goalAmount ?? ""));
       setImageUrl(updated.imageUrl ?? "");
@@ -360,10 +374,10 @@ export default function CampaignManagePage() {
 
               <Field label="Category" error={fieldErrors.category}>
                 <select
-                  value={category}
+                  value={categoryId}
                   onChange={(event) => {
                     setFieldErrors((e) => ({ ...e, category: undefined }));
-                    setCategory(event.target.value);
+                    setCategoryId(event.target.value);
                   }}
                   disabled={categoryOptions.length === 0}
                   className="w-full rounded-2xl border border-[#d7d7d7] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20 disabled:cursor-not-allowed disabled:bg-[#f1f5f9] disabled:text-[#94a3b8]"
@@ -374,7 +388,7 @@ export default function CampaignManagePage() {
                       : "Select a category"}
                   </option>
                   {categoryOptions.map((c) => (
-                    <option key={c.id} value={c.name}>
+                    <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
@@ -445,7 +459,9 @@ export default function CampaignManagePage() {
                     Category
                   </p>
                   <p className="mt-1 font-medium text-black">
-                    {category || "No category"}
+                    {categoryOptions.find((c) => c.id === categoryId)?.name ||
+                      campaign?.category ||
+                      "No category"}
                   </p>
                 </div>
 
