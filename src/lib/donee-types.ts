@@ -28,6 +28,7 @@ export interface FundraisingActivity {
   currentAmount?: number;
   status?: string;
   imageUrl?: string | null;
+  categoryId?: string;
   category?: string;
   location?: string;
 }

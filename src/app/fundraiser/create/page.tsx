@@ -21,7 +21,7 @@ export default function CreateCampaignPage() {
   const { token, isLoading: isAuthLoading } = useAuth();
 
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [location, setLocation] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -73,7 +73,7 @@ export default function CreateCampaignPage() {
   }, [isAuthLoading, token]);
 
   useEffect(() => {
-    if (!editingId || isAuthLoading) return;
+    if (!editingId || isAuthLoading || !token) return;
 
     const id = editingId;
     let cancelled = false;
@@ -107,7 +107,13 @@ export default function CreateCampaignPage() {
       }
 
       setTitle(campaign.title ?? "");
-      setCategory(campaign.category ?? "");
+      const resolvedCategoryId =
+        (campaign.categoryId?.trim() ?? "") ||
+        categories.find(
+          (c) => c.name === (campaign.category ?? "").trim(),
+        )?.id ||
+        "";
+      setCategoryId(resolvedCategoryId);
       setLocation(campaign.location ?? "");
       setGoalAmount(String(campaign.goalAmount ?? ""));
       setImageUrl(campaign.imageUrl ?? "");
@@ -123,19 +129,12 @@ export default function CreateCampaignPage() {
     return () => {
       cancelled = true;
     };
-  }, [editingId, isAuthLoading, token]);
+  }, [editingId, isAuthLoading, token, categories]);
 
-  const categoryOptions = useMemo(() => {
-    const list = [...categories];
-    if (category && !list.some((c) => c.name === category)) {
-      list.push({
-        id: `legacy:${category}`,
-        name: category,
-        description: null,
-      });
-    }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [categories, category]);
+  const categoryOptions = useMemo(
+    () => [...categories].sort((a, b) => a.name.localeCompare(b.name)),
+    [categories],
+  );
 
   function handleLocalImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -172,7 +171,7 @@ export default function CreateCampaignPage() {
 
     const next: typeof fieldErrors = {};
     if (!title.trim()) next.title = "Campaign title is required.";
-    if (!category.trim()) next.category = "Please select a category.";
+    if (!categoryId.trim()) next.category = "Please select a category.";
     if (!location.trim()) next.location = "Location is required.";
     if (!numericGoalAmount || numericGoalAmount <= 0) {
       next.goalAmount = "Target amount must be greater than 0.";
@@ -191,7 +190,7 @@ export default function CreateCampaignPage() {
     const payload = {
       title: title.trim(),
       description: description.trim(),
-      category: category.trim(),
+      categoryId: categoryId.trim(),
       location: location.trim(),
       goalAmount: numericGoalAmount,
       imageUrl: imageUrl.trim() ? imageUrl.trim() : null,
@@ -289,10 +288,10 @@ export default function CreateCampaignPage() {
 
               <Field label="Category" error={fieldErrors.category}>
                 <select
-                  value={category}
+                  value={categoryId}
                   onChange={(event) => {
                     setFieldErrors((e) => ({ ...e, category: undefined }));
-                    setCategory(event.target.value);
+                    setCategoryId(event.target.value);
                   }}
                   disabled={categoryOptions.length === 0}
                   className="w-full rounded-2xl border border-[#d7d7d7] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#2F7A55] focus:ring-2 focus:ring-[#2F7A55]/20 disabled:cursor-not-allowed disabled:bg-[#f1f5f9] disabled:text-[#94a3b8]"
@@ -303,7 +302,7 @@ export default function CreateCampaignPage() {
                       : "Select a category"}
                   </option>
                   {categoryOptions.map((c) => (
-                    <option key={c.id} value={c.name}>
+                    <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}

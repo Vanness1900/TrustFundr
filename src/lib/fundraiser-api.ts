@@ -73,6 +73,7 @@ function normalizeActivity(raw: Record<string, unknown>): FundraisingActivity {
     description: getFirstString(raw?.description),
     goalAmount: getFirstNumber(raw?.goalAmount, raw?.targetAmount),
     currentAmount: getFirstNumber(raw?.currentAmount, raw?.raisedAmount),
+    categoryId: getFirstString(raw?.categoryId),
     category: getFirstString(raw?.category),
     location: getFirstString(raw?.location),
     status: getStatus(raw),
@@ -225,7 +226,7 @@ export async function createFundraisingActivity(
       body: JSON.stringify({
         title: data.title,
         description: data.description,
-        category: data.category ?? null,
+        categoryId: data.categoryId,
         location: data.location ?? null,
         goalAmount:
           data.goalAmount != null && Number.isFinite(data.goalAmount)
@@ -259,7 +260,7 @@ export async function updateFundraisingActivity(
       body: JSON.stringify({
         title: data.title,
         description: data.description ?? "",
-        category: data.category ?? null,
+        categoryId: data.categoryId,
         location: data.location ?? null,
         goalAmount:
           data.goalAmount != null && Number.isFinite(data.goalAmount)

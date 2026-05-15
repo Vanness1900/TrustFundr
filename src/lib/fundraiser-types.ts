@@ -18,6 +18,8 @@ export interface FundraisingActivity {
   description: string;
   goalAmount: number;
   currentAmount: number;
+  /** Resolved category UUID from backend. */
+  categoryId?: string;
   category: string;
   location: string;
   status: FundraisingStatus;
@@ -34,7 +36,8 @@ export interface FundraisingActivityCreateRequest {
   goalAmount?: number;
   /** Omit or 0 for new campaigns; server defaults to 0. */
   currentAmount?: number;
-  category?: string;
+  /** Fundraising category row id (UUID). */
+  categoryId: string;
   location?: string;
   imageUrl?: string | null;
 }
@@ -44,7 +47,8 @@ export interface FundraisingActivityUpdateRequest {
   description?: string;
   goalAmount?: number;
   currentAmount?: number;
-  category?: string;
+  /** Fundraising category row id (UUID); required when updating category. */
+  categoryId: string;
   location?: string;
   imageUrl?: string | null;
   status?: string;

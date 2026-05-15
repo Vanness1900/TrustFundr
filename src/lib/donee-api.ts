@@ -64,6 +64,7 @@ function mapActivityRow(raw: unknown): FundraisingActivity {
           : undefined,
     status: typeof r.status === "string" ? r.status : undefined,
     imageUrl: typeof r.imageUrl === "string" ? r.imageUrl : null,
+    categoryId: typeof r.categoryId === "string" ? r.categoryId : undefined,
     category: typeof r.category === "string" ? r.category : undefined,
     location: typeof r.location === "string" ? r.location : undefined,
   };
