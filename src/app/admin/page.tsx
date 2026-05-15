@@ -208,22 +208,40 @@ async function searchUserAccountsApi(
 function Pill({
   children,
   active,
+  onClick,
+  radio,
 }: {
   children: React.ReactNode;
   active?: boolean;
+  onClick?: () => void;
+  /** Use with role="radiogroup": button acts as a radio option. */
+  radio?: boolean;
 }) {
-  return (
-    <span
-      className={[
-        "inline-flex rounded-full border px-4 py-1.5 text-sm font-medium transition",
-        active
-          ? "border-[#2F7A55] bg-[#2F7A55] text-white"
-          : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
-      ].join(" ")}
-    >
-      {children}
-    </span>
-  );
+  const className = [
+    "inline-flex rounded-full border px-4 py-1.5 text-sm font-medium transition",
+    active
+      ? "border-[#2F7A55] bg-[#2F7A55] text-white"
+      : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+    onClick
+      ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F7A55]/40"
+      : "",
+  ].join(" ");
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        role={radio ? "radio" : undefined}
+        aria-checked={radio ? active : undefined}
+        onClick={onClick}
+        className={className}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return <span className={className}>{children}</span>;
 }
 
 function SectionHeader({
@@ -641,6 +659,10 @@ export default function AdminPage() {
 
   const [openProfileModal, setOpenProfileModal] = useState(false);
   const [openAccountModal, setOpenAccountModal] = useState(false);
+  /** Which admin table is shown under Dashboard (radio-style: one at a time). */
+  const [adminView, setAdminView] = useState<"profiles" | "accounts">(
+    "profiles",
+  );
 
   const [profileMode, setProfileMode] = useState<"create" | "edit">("create");
   const [accountMode, setAccountMode] = useState<"create" | "edit">("create");
@@ -887,13 +909,29 @@ export default function AdminPage() {
     <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl px-6 py-8">
         <p className="text-sm text-gray-600">Welcome, {user.fullName}!</p>
-        <h1 className="mt-1 text-2xl font-bold text-gray-900">
+        <h1 id="admin-managing-heading" className="mt-1 text-2xl font-bold text-gray-900">
           Currently Managing
         </h1>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Pill active>User Profiles</Pill>
-          <Pill active>User Accounts</Pill>
+        <div
+          className="mt-4 flex flex-wrap items-center gap-3"
+          role="radiogroup"
+          aria-labelledby="admin-managing-heading"
+        >
+          <Pill
+            radio
+            active={adminView === "profiles"}
+            onClick={() => setAdminView("profiles")}
+          >
+            User Profiles
+          </Pill>
+          <Pill
+            radio
+            active={adminView === "accounts"}
+            onClick={() => setAdminView("accounts")}
+          >
+            User Accounts
+          </Pill>
         </div>
 
         {listLoadError ? (
@@ -905,7 +943,13 @@ export default function AdminPage() {
         <h2 className="mt-10 text-5xl font-extrabold tracking-tight text-[#2F7A55]">
           Dashboard
         </h2>
+        <p className="mt-2 text-sm text-gray-600">
+          {adminView === "profiles"
+            ? "User profiles"
+            : "User accounts"}
+        </p>
 
+        {adminView === "profiles" ? (
         <section className="mt-10">
           <SectionHeader
             title="User Profile"
@@ -948,8 +992,10 @@ export default function AdminPage() {
             </nav>
           ) : null}
         </section>
+        ) : null}
 
-        <section className="mt-12">
+        {adminView === "accounts" ? (
+        <section className="mt-10">
           <SectionHeader
             title="User Account"
             searchPlaceholder="Search by ID, username, full name, profile..."
@@ -991,6 +1037,7 @@ export default function AdminPage() {
             </nav>
           ) : null}
         </section>
+        ) : null}
       </div>
 
       <ModalShell
