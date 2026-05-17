@@ -7,7 +7,7 @@ import { useAuth } from "@/context/auth-context";
 import {
   listFundraisingActivities,
   searchFundraisingActivities,
-  listMyFavourites,
+  listFavouriteActivityIds,
   saveFavourite,
 } from "@/lib/donee-api";
 import {
@@ -60,25 +60,28 @@ export default function DoneePage() {
           : listFundraisingActivities(token, page, PAGE_SIZE);
 
       try {
-        const [paged, favs] = await Promise.all([
-          activitiesPromise,
-          listMyFavourites(token),
-        ]);
+        const paged = await activitiesPromise;
         if (cancelled) return;
         setActivities(paged.content);
         setTotalPages(Math.max(1, paged.totalPages));
         setTotalElements(paged.totalElements);
-        setFavouriteIds(new Set(favs.map((f) => f.id)));
       } catch {
         if (!cancelled) {
           setActivities([]);
           setTotalPages(1);
           setTotalElements(0);
-          setFavouriteIds(new Set());
         }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
+
+      listFavouriteActivityIds(token)
+        .then((ids) => {
+          if (!cancelled) setFavouriteIds(new Set(ids));
+        })
+        .catch(() => {
+          if (!cancelled) setFavouriteIds(new Set());
+        });
     })();
 
     return () => {

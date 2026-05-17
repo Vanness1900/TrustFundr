@@ -169,6 +169,25 @@ export async function getFundraisingActivityDetail(
 
 // --- Favourites ---
 
+/** Lightweight ids for heart state on browse/detail (avoids loading full favourite rows). */
+export async function listFavouriteActivityIds(
+  token: string | null,
+): Promise<string[]> {
+  const res = await fetch(
+    `${DEFAULT_BASE_URL}/api/donee/fundraising-activity-favourites/favourite-activity-ids`,
+    {
+      method: "GET",
+      headers: getHeaders(token),
+    },
+  );
+  const json = await parseOrThrow<unknown>(
+    res,
+    "Failed to load favourite activity ids.",
+  );
+  if (!Array.isArray(json)) return [];
+  return json.map((id) => String(id));
+}
+
 export async function listMyFavourites(
   token: string | null,
 ): Promise<FavouriteActivity[]> {

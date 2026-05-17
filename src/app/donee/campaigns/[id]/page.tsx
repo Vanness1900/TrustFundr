@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   getFundraisingActivityDetail,
-  listMyFavourites,
+  listFavouriteActivityIds,
   saveFavourite,
 } from "@/lib/donee-api";
 import { useAuth } from "@/context/auth-context";
@@ -41,15 +41,11 @@ export default function DoneeCampaignDetailPage() {
     async function load() {
       setIsLoading(true);
       setError(null);
+      const aid = String(params.id);
       try {
-        const [data, favs] = await Promise.all([
-          getFundraisingActivityDetail(token, params.id),
-          listMyFavourites(token),
-        ]);
+        const data = await getFundraisingActivityDetail(token, params.id);
         if (cancelled) return;
         setCampaign(data);
-        const aid = String(params.id);
-        setIsFavourite(favs.some((f) => String(f.id) === aid));
       } catch (e: unknown) {
         if (!cancelled) {
           setCampaign(null);
@@ -62,6 +58,14 @@ export default function DoneeCampaignDetailPage() {
       } finally {
         if (!cancelled) setIsLoading(false);
       }
+
+      listFavouriteActivityIds(token)
+        .then((ids) => {
+          if (!cancelled) setIsFavourite(ids.includes(aid));
+        })
+        .catch(() => {
+          if (!cancelled) setIsFavourite(false);
+        });
     }
 
     void load();
