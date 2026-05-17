@@ -58,6 +58,8 @@ export default function FundraiserDashboardPage() {
   const [statsCompleted, setStatsCompleted] = useState<FundraisingActivity[]>(
     [],
   );
+  /** Avoid KPI flash of 0 before the first successful stats fetch. */
+  const [hasInitialStatsLoad, setHasInitialStatsLoad] = useState(false);
 
   const refreshActivities = useCallback(async () => {
     if (!token) return;
@@ -75,6 +77,7 @@ export default function FundraiserDashboardPage() {
 
       setStatsActive(statsActive);
       setStatsCompleted(statsCompleted);
+      setHasInitialStatsLoad(true);
 
       let rows: FundraisingActivity[] = [];
 
@@ -204,10 +207,22 @@ export default function FundraiserDashboardPage() {
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-4">
-          <SummaryCard label="Total Campaigns" value={totalActivities} />
-          <SummaryCard label="Completed" value={completedCount} />
-          <SummaryCard label="Total Views" value={totalViews} />
-          <SummaryCard label="Saved by Donees" value={totalFavourites} />
+          <SummaryCard
+            label="Total Campaigns"
+            value={hasInitialStatsLoad ? totalActivities : null}
+          />
+          <SummaryCard
+            label="Completed"
+            value={hasInitialStatsLoad ? completedCount : null}
+          />
+          <SummaryCard
+            label="Total Views"
+            value={hasInitialStatsLoad ? totalViews : null}
+          />
+          <SummaryCard
+            label="Saved by Donees"
+            value={hasInitialStatsLoad ? totalFavourites : null}
+          />
         </div>
 
         <div className="mt-8 rounded-[1.5rem] border border-[#E1E5EA] bg-[#F7FAF8] p-4">
@@ -471,11 +486,18 @@ function CampaignCard({
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({ label, value }: { label: string; value: number | null }) {
   return (
     <article className="rounded-2xl border border-[#E1E5EA] bg-white px-5 py-4 shadow-sm">
       <p className="text-2xl font-extrabold text-[#2F7A55]">
-        {value.toLocaleString()}
+        {value === null ? (
+          <span
+            className="inline-block h-8 w-14 animate-pulse rounded-md bg-[#E1E5EA]"
+            aria-hidden="true"
+          />
+        ) : (
+          value.toLocaleString()
+        )}
       </p>
       <p className="mt-1 text-xs font-medium text-[#40516E]">{label}</p>
     </article>
