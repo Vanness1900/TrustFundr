@@ -16,6 +16,7 @@ export default function CampaignViewPage() {
   const [campaign, setCampaign] = useState<FundraisingActivity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const organiserName = useMemo(() => {
     return user?.fullName || user?.username || "Fundraiser";
@@ -230,6 +231,38 @@ export default function CampaignViewPage() {
                 <StatCard label="Views" value={campaign.viewCount ?? 0} />
                 <StatCard label="Saved" value={campaign.favouriteCount ?? 0} />
               </div>
+            </div>
+
+            {actionMessage ? (
+              <p
+                className="mt-4 rounded-xl bg-[#eaf5ef] px-3 py-2 text-center text-xs font-medium text-[#1e462e]"
+                role="status"
+              >
+                {actionMessage}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex flex-col gap-3 border-t border-[#e5e7eb] pt-6">
+              <button
+                type="button"
+                onClick={() =>
+                  setActionMessage(
+                    "Donation checkout is not available in this build. Please follow your course or organisation process for giving.",
+                  )
+                }
+                className="w-full rounded-full bg-[#2F7A55] py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-95"
+              >
+                Donate now
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setActionMessage("Share button is unavailable.")
+                }
+                className="w-full rounded-full bg-[#1e293b] py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0f172a]"
+              >
+                Share the cause
+              </button>
             </div>
           </aside>
         </div>
