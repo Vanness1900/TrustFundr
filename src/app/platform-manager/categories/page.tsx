@@ -149,13 +149,9 @@ export default function CategoriesPage() {
     }
   }
 
-  async function handleSuspend(id: string, name: string) {
+  async function handleSuspend(id: string) {
     if (!token) return;
     setSuspendError(null);
-    const ok = typeof window !== "undefined"
-      ? window.confirm(`Suspend category "${name}"?`)
-      : false;
-    if (!ok) return;
     try {
       await suspendFundraisingCategory(token, id);
       await refreshList();
@@ -282,7 +278,7 @@ export default function CategoriesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleSuspend(cat.id, cat.name)}
+                        onClick={() => handleSuspend(cat.id)}
                         className="rounded-full p-2 text-red-600 transition hover:bg-red-50"
                         aria-label={`Suspend category ${cat.name}`}
                         title="Suspend"

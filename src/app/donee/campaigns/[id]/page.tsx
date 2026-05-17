@@ -81,35 +81,6 @@ export default function DoneeCampaignDetailPage() {
     }
   }, [campaign, isFavourite, token]);
 
-  const handleShare = useCallback(async () => {
-    if (!campaign) return;
-    const shareUrl =
-      typeof window !== "undefined" ? window.location.href : "";
-    setActionMessage(null);
-    try {
-      if (typeof navigator !== "undefined" && navigator.share) {
-        // Use `url` only — duplicating the same string in `text` makes many apps show the link twice.
-        await navigator.share({
-          title: campaign.title?.trim() || "Campaign",
-          url: shareUrl,
-        });
-        return;
-      }
-    } catch {
-      /* dismissed share sheet */
-    }
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        setActionMessage("Campaign link copied to clipboard.");
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-    setActionMessage("Copy the address from your browser to share.");
-  }, [campaign]);
-
   if (isAuthLoading || !token) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f3f3f3]">
@@ -312,7 +283,9 @@ export default function DoneeCampaignDetailPage() {
               </button>
               <button
                 type="button"
-                onClick={() => void handleShare()}
+                onClick={() =>
+                  setActionMessage("Share button is unavailable.")
+                }
                 className="w-full rounded-full bg-[#1e293b] py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0f172a]"
               >
                 Share the cause

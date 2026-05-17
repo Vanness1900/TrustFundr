@@ -155,10 +155,6 @@ export default function FundraiserDashboardPage() {
   async function handleSuspend(activity: FundraisingActivity) {
     if (!token) return;
     setSuspendRowError(null);
-    const confirmed = window.confirm(
-      `Suspend "${activity.title}"? This removes the campaign from public lists.`,
-    );
-    if (!confirmed) return;
 
     const activityId = String(activity.id);
     try {

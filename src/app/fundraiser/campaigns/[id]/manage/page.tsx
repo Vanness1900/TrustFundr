@@ -252,11 +252,6 @@ export default function CampaignManagePage() {
 
     setSuspendError(null);
 
-    const confirmed = window.confirm(
-      `Suspend "${campaign.title}"? This removes it from active lists.`,
-    );
-    if (!confirmed) return;
-
     try {
       await suspendFundraisingActivity(token, campaign.id);
       setSuspendError(null);
